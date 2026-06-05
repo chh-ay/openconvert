@@ -5,6 +5,10 @@ name: release
 # builds on its own runner. Linux/Arch links the system libav (the distro ships
 # it); macOS and Windows produce self-contained binaries via `static-ffmpeg`
 # because those systems have no libav.
+#
+# Runners are Blacksmith (runs-on: blacksmith-*) and require the blacksmith.sh
+# GitHub App installed on this repo, or jobs queue with no runner. On the free
+# tier macOS is the cost driver: 1 macOS-6vcpu minute = 20 x64-2vcpu minutes.
 on:
   workflow_dispatch:
   push:
@@ -13,7 +17,7 @@ on:
 
 jobs:
   linux-arch:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     container: archlinux:latest
     steps:
       - uses: actions/checkout@v4
@@ -30,21 +34,28 @@ jobs:
           path: target/release/openconvert-app
 
   macos:
-    runs-on: macos-latest
+    runs-on: blacksmith-6vcpu-macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Install build tools and GPL codecs
         run: brew install nasm pkg-config x264 x265 libvpx opus lame
       - name: Build (static libav, self-contained)
-        run: cargo build -p openconvert-app --release --locked --features static-ffmpeg
+        run: |
+          # lame ships no pkg-config file and macOS clang does not search the
+          # Homebrew prefix by default, so point the configure compile/link
+          # tests at it (the pkg-config codecs are already found via brew).
+          export PKG_CONFIG_PATH="$(brew --prefix)/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+          export CPATH="$(brew --prefix)/include"
+          export LIBRARY_PATH="$(brew --prefix)/lib"
+          cargo build -p openconvert-app --release --locked --features static-ffmpeg
       - uses: actions/upload-artifact@v4
         with:
           name: openconvert-macos
           path: target/release/openconvert-app
 
   windows:
-    runs-on: windows-latest
+    runs-on: blacksmith-4vcpu-windows-2025
     defaults:
       run:
         shell: msys2 {0}
@@ -71,7 +82,7 @@ jobs:
     needs: [linux-arch, macos, windows]
     # Publish whatever built, even if one OS fails, on tag pushes only.
     if: ${{ always() && startsWith(github.ref, 'refs/tags/') }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     permissions:
       contents: write
     steps:
