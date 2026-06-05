@@ -1,5 +1,7 @@
 //! Media probing, decoding, in-process rendering, and runtime media settings.
 
+/// In-process audio decoding for preview playback.
+pub mod audio;
 /// CPU compositing of decoded preview layers.
 pub mod composite;
 /// In-process video decoding for preview playback.
@@ -13,6 +15,7 @@ pub mod probe;
 /// In-process video encoding and muxing for export.
 pub mod render;
 
+pub use audio::{AudioStreamDecoder, OUTPUT_CHANNELS, OUTPUT_SAMPLE_RATE};
 pub use composite::{composite_layers, CompositeLayer};
 pub use decode::{decode_frame_at, DecodeError, DecodedFrame, ScrubDecoder, VideoDecoder};
 pub use export::{CompressionPreset, Container, ExportOptions, VideoCodec};

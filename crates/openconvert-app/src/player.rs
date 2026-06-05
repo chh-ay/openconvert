@@ -1,12 +1,9 @@
-use std::fs::File;
-use std::io::BufReader;
+use std::num::{NonZeroU16, NonZeroU32};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use rodio::decoder::DecoderBuilder;
-use rodio::{
-    ChannelCount, Decoder, DeviceSinkBuilder, MixerDeviceSink, Player, SampleRate, Source,
-};
+use openconvert_media::audio::{AudioStreamDecoder, OUTPUT_CHANNELS, OUTPUT_SAMPLE_RATE};
+use rodio::{ChannelCount, DeviceSinkBuilder, MixerDeviceSink, Player, SampleRate, Source};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PlaybackTarget {
@@ -22,6 +19,19 @@ pub struct AudioSource {
 
 const SPEED_EPSILON: f32 = 0.001;
 const STRETCH_BLOCK_FRAMES: usize = 1_024;
+
+/// Interleaved-stereo channel count from [`openconvert_media::audio`], as the
+/// non-zero type rodio's [`Source`] requires. Evaluated at compile time.
+const AUDIO_CHANNELS: ChannelCount = match NonZeroU16::new(OUTPUT_CHANNELS) {
+    Some(value) => value,
+    None => panic!("OUTPUT_CHANNELS must be non-zero"),
+};
+/// Output sample rate from [`openconvert_media::audio`], as rodio's non-zero
+/// [`SampleRate`]. Evaluated at compile time.
+const AUDIO_SAMPLE_RATE: SampleRate = match NonZeroU32::new(OUTPUT_SAMPLE_RATE) {
+    Some(value) => value,
+    None => panic!("OUTPUT_SAMPLE_RATE must be non-zero"),
+};
 
 struct PitchPreservingSpeed<S>
 where
@@ -326,7 +336,7 @@ impl PlaybackState {
     fn start_audio(&mut self, source: AudioSource) -> Result<(), String> {
         let stream = self.ensure_stream()?;
         let player = Player::connect_new(stream.mixer());
-        let decoder = open_seeked_decoder(&source.path, source.media_position_ms)?;
+        let decoder = LibavAudioSource::open(&source.path, source.media_position_ms)?;
         let audio: Box<dyn Source<Item = f32> + Send> = if needs_pitch_preserving_speed(self.speed)
         {
             Box::new(PitchPreservingSpeed::new(decoder, self.speed))
@@ -367,45 +377,70 @@ fn needs_pitch_preserving_speed(speed: f32) -> bool {
     (speed - 1.0).abs() > SPEED_EPSILON
 }
 
-fn open_seeked_decoder(
-    path: &Path,
-    media_position_ms: u64,
-) -> Result<Decoder<BufReader<File>>, String> {
-    let mut decoder = open_decoder(path, false)?;
-    if media_position_ms == 0 {
-        return Ok(decoder);
-    }
-
-    let position = Duration::from_millis(media_position_ms);
-    if decoder.try_seek(position).is_ok() {
-        return Ok(decoder);
-    }
-
-    let mut decoder = open_decoder(path, true)?;
-    decoder
-        .try_seek(position)
-        .map_err(|error| format!("seek audio: {error}"))?;
-    Ok(decoder)
+/// A rodio [`Source`] that streams interleaved stereo `f32` samples from a
+/// libav-backed [`AudioStreamDecoder`]. libav seeks the audio track inside a
+/// video container correctly, where rodio's symphonia decoder reports a
+/// successful seek but keeps playing from the start.
+struct LibavAudioSource {
+    decoder: AudioStreamDecoder,
+    current: std::vec::IntoIter<f32>,
+    exhausted: bool,
 }
 
-fn open_decoder(path: &Path, coarse_seek: bool) -> Result<Decoder<BufReader<File>>, String> {
-    let file = File::open(path).map_err(|error| format!("open audio: {error}"))?;
-    let byte_len = file
-        .metadata()
-        .map_err(|error| format!("read audio metadata: {error}"))?
-        .len();
-    DecoderBuilder::new()
-        .with_data(BufReader::new(file))
-        .with_byte_len(byte_len)
-        .with_seekable(true)
-        .with_coarse_seek(coarse_seek)
-        .build()
-        .map_err(|error| format!("decode audio: {error}"))
+impl LibavAudioSource {
+    fn open(path: &Path, media_position_ms: u64) -> Result<Self, String> {
+        let decoder = AudioStreamDecoder::open(path, media_position_ms)
+            .map_err(|error| format!("decode audio: {error}"))?;
+        Ok(Self {
+            decoder,
+            current: Vec::new().into_iter(),
+            exhausted: false,
+        })
+    }
+}
+
+impl Iterator for LibavAudioSource {
+    type Item = f32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(sample) = self.current.next() {
+                return Some(sample);
+            }
+            if self.exhausted {
+                return None;
+            }
+            match self.decoder.next_chunk() {
+                Ok(Some(chunk)) => self.current = chunk.into_iter(),
+                Ok(None) | Err(_) => {
+                    self.exhausted = true;
+                    return None;
+                }
+            }
+        }
+    }
+}
+
+impl Source for LibavAudioSource {
+    fn current_span_len(&self) -> Option<usize> {
+        None
+    }
+
+    fn channels(&self) -> ChannelCount {
+        AUDIO_CHANNELS
+    }
+
+    fn sample_rate(&self) -> SampleRate {
+        AUDIO_SAMPLE_RATE
+    }
+
+    fn total_duration(&self) -> Option<Duration> {
+        None
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write as _;
     use std::num::{NonZeroU16, NonZeroU32};
 
     use rodio::buffer::SamplesBuffer;
@@ -446,49 +481,92 @@ mod tests {
         assert_eq!(stretched.total_duration(), Some(Duration::from_millis(500)));
     }
 
-    #[test]
-    fn seeked_decoder_starts_at_the_requested_wav_position() {
-        let dir = tempfile::tempdir().expect("temp dir exists");
-        let path = dir.path().join("seek.wav");
-        write_test_wav(&path);
-
-        let mut decoder = open_seeked_decoder(&path, 600).expect("decoder seeks into wav");
-
-        assert!(decoder.next().is_some_and(|sample| sample > 0.0));
+    fn build_half_silent_media(path: &Path) {
+        // 4s mono tone, but volume forced to 0 for the first 2s. Seeking past
+        // 2s must yield loud samples; seeking to 0 must yield near silence.
+        let status = std::process::Command::new("ffmpeg")
+            .args([
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=1000:sample_rate=44100:duration=4",
+                "-af",
+                "volume=0:enable='lt(t,2)'",
+                "-y",
+            ])
+            .arg(path)
+            .status()
+            .expect("ffmpeg builds the half-silent media asset");
+        assert!(status.success(), "ffmpeg failed to build the asset");
     }
 
-    fn write_test_wav(path: &Path) {
-        const SAMPLE_RATE: u32 = 1_000;
-        const SAMPLE_COUNT: u32 = 1_000;
-        const CHANNELS: u16 = 1;
-        const BYTES_PER_SAMPLE: u16 = 2;
-        const DATA_SIZE: u32 = SAMPLE_COUNT * BYTES_PER_SAMPLE as u32;
+    fn max_abs_after_seek(path: &Path, media_position_ms: u64) -> f32 {
+        LibavAudioSource::open(path, media_position_ms)
+            .expect("audio source opens")
+            .take(48_000)
+            .fold(0.0_f32, |acc, sample| acc.max(sample.abs()))
+    }
 
-        let mut file = File::create(path).expect("wav fixture can be created");
-        file.write_all(b"RIFF").expect("wav riff header");
-        file.write_all(&(36 + DATA_SIZE).to_le_bytes())
-            .expect("wav riff size");
-        file.write_all(b"WAVE").expect("wav wave header");
-        file.write_all(b"fmt ").expect("wav fmt chunk");
-        file.write_all(&16u32.to_le_bytes()).expect("wav fmt len");
-        file.write_all(&1u16.to_le_bytes()).expect("wav pcm tag");
-        file.write_all(&CHANNELS.to_le_bytes())
-            .expect("wav channels");
-        file.write_all(&SAMPLE_RATE.to_le_bytes())
-            .expect("wav sample rate");
-        file.write_all(&(SAMPLE_RATE * BYTES_PER_SAMPLE as u32).to_le_bytes())
-            .expect("wav byte rate");
-        file.write_all(&(CHANNELS * BYTES_PER_SAMPLE).to_le_bytes())
-            .expect("wav block align");
-        file.write_all(&(BYTES_PER_SAMPLE * 8).to_le_bytes())
-            .expect("wav bits per sample");
-        file.write_all(b"data").expect("wav data chunk");
-        file.write_all(&DATA_SIZE.to_le_bytes())
-            .expect("wav data size");
-        for index in 0..SAMPLE_COUNT {
-            let sample: i16 = if index < 500 { -16_384 } else { 16_384 };
-            file.write_all(&sample.to_le_bytes())
-                .expect("wav sample data");
-        }
+    #[test]
+    fn seeked_decoder_starts_at_the_requested_mp3_position() {
+        let dir = tempfile::tempdir().expect("temp dir exists");
+        let path = dir.path().join("seek.mp3");
+        build_half_silent_media(&path);
+
+        assert!(max_abs_after_seek(&path, 3_000) > 0.03);
+    }
+
+    fn build_half_silent_video(path: &Path) {
+        // Realistic timeline source: H.264 video + AAC audio, audio silent for
+        // the first 2s. This is the multi-stream case the app actually plays.
+        let status = std::process::Command::new("ffmpeg")
+            .args([
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=size=160x120:rate=30:duration=4",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=1000:sample_rate=44100:duration=4",
+                "-af",
+                "volume=0:enable='lt(t,2)'",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-shortest",
+                "-y",
+            ])
+            .arg(path)
+            .status()
+            .expect("ffmpeg builds the half-silent video asset");
+        assert!(status.success(), "ffmpeg failed to build the video asset");
+    }
+
+    #[test]
+    fn seeked_decoder_starts_at_the_requested_video_mp4_position() {
+        let dir = tempfile::tempdir().expect("temp dir exists");
+        let path = dir.path().join("seek_video.mp4");
+        build_half_silent_video(&path);
+
+        assert!(max_abs_after_seek(&path, 3_000) > 0.03);
+    }
+
+    #[test]
+    fn unseeked_decoder_starts_silent_for_half_silent_media() {
+        let dir = tempfile::tempdir().expect("temp dir exists");
+        let path = dir.path().join("seek.mp3");
+        build_half_silent_media(&path);
+
+        assert!(max_abs_after_seek(&path, 0) < 0.05);
     }
 }

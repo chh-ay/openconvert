@@ -39,6 +39,9 @@ pub enum DecodeError {
     /// The source had no decodable video stream.
     #[error("no video stream in {0}")]
     NoVideoStream(String),
+    /// The source had no decodable audio stream.
+    #[error("no audio stream in {0}")]
+    NoAudioStream(String),
     /// The source produced no decodable frame at the requested position.
     #[error("no frame decoded from {0}")]
     NoFrame(String),
