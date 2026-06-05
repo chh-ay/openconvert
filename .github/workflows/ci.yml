@@ -18,6 +18,7 @@ jobs:
           pacman -Syu --noconfirm --needed \
             rust cargo pkgconf clang ffmpeg \
             alsa-lib libxkbcommon wayland libx11 libxcursor libxi libxrandr libglvnd
+      - uses: Swatinem/rust-cache@v2
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy

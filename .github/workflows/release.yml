@@ -22,6 +22,7 @@ jobs:
           pacman -Syu --noconfirm --needed \
             rust cargo pkgconf clang ffmpeg \
             alsa-lib libxkbcommon wayland libx11 libxcursor libxi libxrandr libglvnd
+      - uses: Swatinem/rust-cache@v2
       - name: Build (dynamic libav)
         run: cargo build -p openconvert-app --release --locked
       - uses: actions/upload-artifact@v4
@@ -36,6 +37,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Install build tools and GPL codecs
         run: brew install nasm pkg-config x264 x265 libvpx opus lame
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       - name: Build (static libav, self-contained)
         run: |
           # lame ships no pkg-config file and macOS clang does not search the
@@ -67,8 +71,21 @@ jobs:
             mingw-w64-x86_64-clang mingw-w64-x86_64-pkgconf
             mingw-w64-x86_64-x264 mingw-w64-x86_64-x265 mingw-w64-x86_64-libvpx
             mingw-w64-x86_64-opus mingw-w64-x86_64-lame
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       - name: Build (static libav, self-contained)
-        run: cargo build -p openconvert-app --release --locked --features static-ffmpeg
+        run: |
+          # ffmpeg-sys-next 8.1.0 passes a bogus `-03` (a typo for `-O3`) into
+          # FFmpeg's configure; MinGW gcc rejects it, so every compile probe
+          # fails and configure aborts with "pthreads requested but not found".
+          # configure ignores $CC, so shim gcc/cc on PATH to repair `-03`.
+          mkdir -p /tmp/ccshim
+          printf '#!/usr/bin/env bash\nargs=(); for a in "$@"; do [ "$a" = "-03" ] && a="-O3"; args+=("$a"); done\nexec /mingw64/bin/gcc "${args[@]}"\n' > /tmp/ccshim/gcc
+          cp /tmp/ccshim/gcc /tmp/ccshim/cc
+          chmod +x /tmp/ccshim/gcc /tmp/ccshim/cc
+          export PATH="/tmp/ccshim:$PATH"
+          cargo build -p openconvert-app --release --locked --features static-ffmpeg
       - uses: actions/upload-artifact@v4
         with:
           name: openconvert-windows-x86_64
