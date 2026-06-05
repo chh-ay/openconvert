@@ -7,6 +7,16 @@ name: release
 # because those systems have no libav.
 on:
   workflow_dispatch:
+    inputs:
+      only:
+        description: "Build a single OS for testing (build-only; never publishes)"
+        type: choice
+        default: all
+        options:
+          - all
+          - linux
+          - macos
+          - windows
   push:
     tags:
       - "v*"
@@ -14,6 +24,7 @@ on:
 jobs:
   linux-arch:
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == 'all' || inputs.only == 'linux' }}
     container: archlinux:latest
     steps:
       - uses: actions/checkout@v4
@@ -32,6 +43,7 @@ jobs:
 
   macos:
     runs-on: macos-latest
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == 'all' || inputs.only == 'macos' }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -56,6 +68,7 @@ jobs:
 
   windows:
     runs-on: windows-latest
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == 'all' || inputs.only == 'windows' }}
     defaults:
       run:
         shell: msys2 {0}
@@ -75,17 +88,7 @@ jobs:
         with:
           cache-on-failure: true
       - name: Build (static libav, self-contained)
-        run: |
-          # ffmpeg-sys-next 8.1.0 passes a bogus `-03` (a typo for `-O3`) into
-          # FFmpeg's configure; MinGW gcc rejects it, so every compile probe
-          # fails and configure aborts with "pthreads requested but not found".
-          # configure ignores $CC, so shim gcc/cc on PATH to repair `-03`.
-          mkdir -p /tmp/ccshim
-          printf '#!/usr/bin/env bash\nargs=(); for a in "$@"; do [ "$a" = "-03" ] && a="-O3"; args+=("$a"); done\nexec /mingw64/bin/gcc "${args[@]}"\n' > /tmp/ccshim/gcc
-          cp /tmp/ccshim/gcc /tmp/ccshim/cc
-          chmod +x /tmp/ccshim/gcc /tmp/ccshim/cc
-          export PATH="/tmp/ccshim:$PATH"
-          cargo build -p openconvert-app --release --locked --features static-ffmpeg
+        run: cargo build -p openconvert-app --release --locked --features static-ffmpeg
       - uses: actions/upload-artifact@v4
         with:
           name: openconvert-windows-x86_64
