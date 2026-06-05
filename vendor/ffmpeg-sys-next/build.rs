@@ -1560,6 +1560,16 @@ fn main() {
         .size_t_is_usize(true)
         .parse_callbacks(Box::new(Callbacks));
 
+    // On GitHub's Windows runner, bindgen can load a libclang whose default
+    // Windows target is MSVC while the headers come from MSYS2/MinGW. MinGW's
+    // CRT headers require GNU/MinGW target macros and attributes; without an
+    // explicit target, libclang reports syntax errors inside stdlib.h.
+    if matches!(env::var("CARGO_CFG_TARGET_OS").as_deref(), Ok("windows"))
+        && matches!(env::var("CARGO_CFG_TARGET_ENV").as_deref(), Ok("gnu"))
+    {
+        builder = builder.clang_arg(format!("--target={}", env::var("TARGET").unwrap()));
+    }
+
     if let Some(sysroot) = sysroot.as_deref() {
         builder = builder.clang_arg(format!("--sysroot={sysroot}"));
     }
