@@ -3,7 +3,8 @@ use eframe::egui::{self, Layout, RichText, Vec2};
 use crate::app::OpenConvertApp;
 use crate::messages::Panel;
 use crate::theme::{
-    action_button, primary_button, tab_chip, PALETTE_BORDER_SOFT, PALETTE_MUTED, PALETTE_TEXT,
+    action_button, button, primary_button, tab_chip, PALETTE_BORDER_SOFT, PALETTE_MUTED,
+    PALETTE_TEXT,
 };
 
 impl OpenConvertApp {
@@ -25,16 +26,23 @@ impl OpenConvertApp {
                 tab_button(ui, "Convert", &mut self.panel, Panel::Convert);
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let (label, is_convert) = match self.panel {
-                        Panel::Edit => ("Export ▶", false),
-                        Panel::Convert => ("Convert ▶", true),
+                    let label = match self.panel {
+                        Panel::Edit => "Export ▶",
+                        Panel::Convert => "Convert ▶",
                     };
-                    if primary_button(ui, label).clicked() {
-                        if is_convert {
-                            self.convert_input_file();
-                        } else {
-                            self.export_media();
-                        }
+                    if primary_button(ui, label)
+                        .on_hover_text("Open export settings (Ctrl/Cmd+E)")
+                        .clicked()
+                    {
+                        self.export_dialog_open = true;
+                    }
+                    ui.add_space(6.0);
+                    if ui
+                        .add(button("?").min_size(Vec2::new(34.0, 36.0)))
+                        .on_hover_text("Keyboard shortcuts (?)")
+                        .clicked()
+                    {
+                        self.show_shortcuts = true;
                     }
                 });
             },
@@ -71,7 +79,10 @@ impl OpenConvertApp {
         if action_button(ui, "Open").clicked() {
             self.open_project();
         }
-        if action_button(ui, "Save").clicked() {
+        if action_button(ui, "Save")
+            .on_hover_text("Save project (Ctrl/Cmd+S)")
+            .clicked()
+        {
             self.save_project();
         }
         ui.add(vertical_divider());

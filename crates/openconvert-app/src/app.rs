@@ -46,6 +46,8 @@ pub struct OpenConvertApp {
     pub(crate) egui_ctx: egui::Context,
     pub(crate) status: String,
     pub(crate) panel: Panel,
+    pub(crate) export_dialog_open: bool,
+    pub(crate) show_shortcuts: bool,
     pub(crate) preview: Option<egui::TextureHandle>,
     pub(crate) preview_in_flight: bool,
     pub(crate) pending_preview: Option<PreviewRequest>,
@@ -76,6 +78,8 @@ impl OpenConvertApp {
             egui_ctx: cc.egui_ctx.clone(),
             status,
             panel: Panel::Edit,
+            export_dialog_open: false,
+            show_shortcuts: false,
             preview: None,
             preview_in_flight: false,
             pending_preview: None,
@@ -1148,17 +1152,7 @@ impl eframe::App for OpenConvertApp {
         self.process_messages(&ctx);
         self.sync_playback(&ctx);
 
-        // Spacebar toggles playback for the active panel unless a widget (e.g. a
-        // text field or a focused button) is consuming keyboard input.
-        if ctx.input(|input| input.key_pressed(egui::Key::Space))
-            && ctx.memory(|memory| memory.focused().is_none())
-        {
-            let target = match self.panel {
-                Panel::Edit => PlaybackTarget::Timeline,
-                Panel::Convert => PlaybackTarget::Convert,
-            };
-            self.toggle_playback(target);
-        }
+        self.handle_shortcuts(&ctx);
 
         // `App::ui` provides a Ui with no background, so anything not
         // covered by a child panel would show the desktop wallpaper. Paint
@@ -1197,6 +1191,9 @@ impl eframe::App for OpenConvertApp {
                 Panel::Edit => self.draw_edit_view(ui),
                 Panel::Convert => self.draw_convert_view(ui),
             });
+
+        self.draw_export_dialog(&ctx);
+        self.draw_shortcuts_overlay(&ctx);
     }
 }
 

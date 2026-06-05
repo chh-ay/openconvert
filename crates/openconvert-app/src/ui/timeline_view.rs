@@ -41,24 +41,30 @@ impl OpenConvertApp {
                     egui::Layout::left_to_right(egui::Align::Center),
                     |ui| {
                         if toolbar_icon_button(ui, PlayerIcon::Previous)
-                            .on_hover_text("Previous clip")
+                            .on_hover_text("Previous clip (↑)")
                             .clicked()
                         {
                             self.editor.select_previous_clip();
                             self.request_preview_at_playhead(false);
                         }
                         if toolbar_icon_button(ui, PlayerIcon::Next)
-                            .on_hover_text("Next clip")
+                            .on_hover_text("Next clip (↓)")
                             .clicked()
                         {
                             self.editor.select_next_clip();
                             self.request_preview_at_playhead(false);
                         }
-                        if toolbar_button(ui, "-1s").clicked() {
+                        if toolbar_button(ui, "-1s")
+                            .on_hover_text("Step back 1s (Shift+←)")
+                            .clicked()
+                        {
                             self.editor.nudge_playhead(-1_000);
                             self.request_preview_at_playhead(false);
                         }
-                        if toolbar_button(ui, "+1s").clicked() {
+                        if toolbar_button(ui, "+1s")
+                            .on_hover_text("Step forward 1s (Shift+→)")
+                            .clicked()
+                        {
                             self.editor.nudge_playhead(1_000);
                             self.request_preview_at_playhead(false);
                         }
@@ -66,19 +72,19 @@ impl OpenConvertApp {
                         ui.add(toolbar_divider());
 
                         if toolbar_button(ui, "Split")
-                            .on_hover_text("Cut at playhead")
+                            .on_hover_text("Cut at playhead (Ctrl/Cmd+B)")
                             .clicked()
                         {
                             self.split_at_playhead();
                         }
                         if toolbar_button(ui, "Mute")
-                            .on_hover_text("Mute / unmute selected clip")
+                            .on_hover_text("Mute / unmute selected clip (M)")
                             .clicked()
                         {
                             self.toggle_selected_clip_mute();
                         }
                         if toolbar_button(ui, "Delete")
-                            .on_hover_text("Remove selected clip")
+                            .on_hover_text("Remove selected clip (Backspace / Delete)")
                             .clicked()
                         {
                             self.delete_selected_clip();
@@ -87,29 +93,35 @@ impl OpenConvertApp {
                         ui.add(toolbar_divider());
 
                         if toolbar_button(ui, "Zoom -")
-                            .on_hover_text("Zoom out")
+                            .on_hover_text("Zoom out (-)")
                             .clicked()
                         {
                             self.zoom_timeline(1.0 / ZOOM_STEP);
                         }
                         if toolbar_button(ui, "Fit")
-                            .on_hover_text("Fit project to view")
+                            .on_hover_text("Fit project to view (F or Shift+Z)")
                             .clicked()
                         {
                             self.editor.request_fit();
                         }
                         if toolbar_button(ui, "Zoom +")
-                            .on_hover_text("Zoom in")
+                            .on_hover_text("Zoom in (+)")
                             .clicked()
                         {
                             self.zoom_timeline(ZOOM_STEP);
                         }
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if toolbar_button(ui, "Redo").clicked() {
+                            if toolbar_button(ui, "Redo")
+                                .on_hover_text("Redo (Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y)")
+                                .clicked()
+                            {
                                 self.redo();
                             }
-                            if toolbar_button(ui, "Undo").clicked() {
+                            if toolbar_button(ui, "Undo")
+                                .on_hover_text("Undo (Ctrl/Cmd+Z)")
+                                .clicked()
+                            {
                                 self.undo();
                             }
                         });
@@ -119,7 +131,7 @@ impl OpenConvertApp {
     }
 
     /// Zooms the timeline around the playhead so it stays put on screen.
-    fn zoom_timeline(&mut self, factor: f32) {
+    pub(crate) fn zoom_timeline(&mut self, factor: f32) {
         let anchor_ms = self.editor.playhead_ms;
         let anchor_offset =
             ms_to_px(anchor_ms, self.editor.pixels_per_second) - self.editor.timeline_scroll_x;
@@ -474,25 +486,16 @@ impl OpenConvertApp {
                 );
 
                 let selected = self.editor.selected_clip == Some((track.id, clip.id));
-                let label = clip_label(&clip.source_path, duration_ms);
-                let fill = clip_fill_color(selected, clip.muted, dragged);
-                painter.rect_filled(clip_rect, 7.0, fill);
-                let strip = Rect::from_min_max(
-                    Pos2::new(clip_left + 2.0, clip_rect.top() + 2.0),
-                    Pos2::new(clip_right - 2.0, clip_rect.bottom() - 2.0),
-                );
-                self.draw_clip_thumbnails(
-                    &thumb_painter,
-                    strip,
-                    &clip.source_path,
-                    source_start_ms,
-                    duration_ms,
-                    &mut thumb_requests,
-                );
-                paint_clip_overlay(&painter, clip_rect, &label, selected, dragged, clip.muted);
-
                 let id = ui.make_persistent_id(("oc_clip", clip.id.0));
                 let clip_response = ui.interact(clip_rect, id, Sense::click_and_drag());
+                let hover_t = ui.ctx().animate_bool_with_time(
+                    id.with("hover"),
+                    clip_response.hovered(),
+                    0.08,
+                );
+                let selected_t =
+                    ui.ctx()
+                        .animate_bool_with_time(id.with("selected"), selected || dragged, 0.12);
 
                 if clip_response.hovered() {
                     if let Some(p) = pointer {
@@ -506,6 +509,25 @@ impl OpenConvertApp {
                         );
                     }
                 }
+
+                let label = clip_label(&clip.source_path, duration_ms);
+                let fill = clip_fill_color(selected, clip.muted, dragged, hover_t, selected_t);
+                painter.rect_filled(clip_rect, 7.0, fill);
+                let strip = Rect::from_min_max(
+                    Pos2::new(clip_left + 2.0, clip_rect.top() + 2.0),
+                    Pos2::new(clip_right - 2.0, clip_rect.bottom() - 2.0),
+                );
+                self.draw_clip_thumbnails(
+                    &thumb_painter,
+                    strip,
+                    &clip.source_path,
+                    source_start_ms,
+                    duration_ms,
+                    &mut thumb_requests,
+                );
+                paint_clip_overlay(
+                    &painter, clip_rect, &label, selected, dragged, clip.muted, selected_t,
+                );
 
                 let pointer_context = clip_response
                     .interact_pointer_pos()
@@ -841,19 +863,45 @@ fn original_track_index(
         .unwrap_or(0)
 }
 
-fn clip_fill_color(selected: bool, muted: bool, dragged: bool) -> Color32 {
-    let fill = if muted {
+fn clip_fill_color(
+    selected: bool,
+    muted: bool,
+    dragged: bool,
+    hover_t: f32,
+    selected_t: f32,
+) -> Color32 {
+    let base = if muted {
         PALETTE_CLIP_MUTED
     } else if selected {
         PALETTE_CLIP_SELECTED
     } else {
         PALETTE_CLIP
     };
-    if dragged {
-        fill.gamma_multiply(0.85)
+    let selected_fill = if muted {
+        base
     } else {
-        fill
+        blend_color(base, PALETTE_CLIP_SELECTED, selected_t)
+    };
+    let hovered = blend_color(selected_fill, PALETTE_CLIP_STROKE, hover_t * 0.16);
+    if dragged {
+        hovered.gamma_multiply(0.85)
+    } else {
+        hovered
     }
+}
+
+fn blend_color(from: Color32, to: Color32, t: f32) -> Color32 {
+    let t = t.clamp(0.0, 1.0);
+    Color32::from_rgba_unmultiplied(
+        lerp_channel(from.r(), to.r(), t),
+        lerp_channel(from.g(), to.g(), t),
+        lerp_channel(from.b(), to.b(), t),
+        lerp_channel(from.a(), to.a(), t),
+    )
+}
+
+fn lerp_channel(from: u8, to: u8, t: f32) -> u8 {
+    (from as f32 + (to as f32 - from as f32) * t).round() as u8
 }
 
 /// Draws the clip frame, selection handles, mute badge, and name on top of the
@@ -863,22 +911,17 @@ fn paint_clip_overlay(
     clip_rect: Rect,
     label: &str,
     selected: bool,
-    dragged: bool,
+    _dragged: bool,
     muted: bool,
+    selected_t: f32,
 ) {
     let muted_stroke = Color32::from_rgb(255, 184, 82);
     let stroke_color = if muted {
         muted_stroke
-    } else if selected || dragged {
-        PALETTE_ACCENT
     } else {
-        PALETTE_CLIP_STROKE
+        blend_color(PALETTE_CLIP_STROKE, PALETTE_ACCENT, selected_t)
     };
-    let stroke_width = if selected || dragged || muted {
-        1.8
-    } else {
-        1.0
-    };
+    let stroke_width = if muted { 1.8 } else { 1.0 + selected_t * 0.8 };
     painter.rect_stroke(
         clip_rect,
         7.0,
@@ -1035,6 +1078,34 @@ fn paint_track_arrow(painter: &egui::Painter, rect: Rect, up: bool, enabled: boo
     painter.add(egui::Shape::convex_polygon(points, color, Stroke::NONE));
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blend_color_returns_the_start_color_at_zero() {
+        assert_eq!(
+            blend_color(
+                Color32::from_rgb(10, 20, 30),
+                Color32::from_rgb(200, 210, 220),
+                0.0
+            ),
+            Color32::from_rgb(10, 20, 30)
+        );
+    }
+
+    #[test]
+    fn blend_color_returns_the_end_color_at_one() {
+        assert_eq!(
+            blend_color(
+                Color32::from_rgb(10, 20, 30),
+                Color32::from_rgb(200, 210, 220),
+                1.0
+            ),
+            Color32::from_rgb(200, 210, 220)
+        );
+    }
+}
 #[derive(Debug, Clone, Copy)]
 enum TimelineClipAction {
     Split,

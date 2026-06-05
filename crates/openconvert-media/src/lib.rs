@@ -18,7 +18,7 @@ pub mod render;
 pub use audio::{AudioStreamDecoder, OUTPUT_CHANNELS, OUTPUT_SAMPLE_RATE};
 pub use composite::{composite_layers, CompositeLayer};
 pub use decode::{decode_frame_at, DecodeError, DecodedFrame, ScrubDecoder, VideoDecoder};
-pub use export::{CompressionPreset, Container, ExportOptions, VideoCodec};
+pub use export::{output_video_size, CompressionPreset, Container, ExportOptions, VideoCodec};
 pub use performance::{HwAccel, MediaPerformance};
 pub use probe::{probe_media, MediaProbeError, MediaProbeResult};
 pub use render::{render_timeline, RenderError};
