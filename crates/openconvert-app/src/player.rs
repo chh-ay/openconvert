@@ -61,7 +61,7 @@ where
             .map(|duration| duration.div_f32(speed));
         Self {
             input,
-            stretch: signalsmith_stretch::Stretch::preset_cheaper(
+            stretch: signalsmith_stretch::Stretch::preset_default(
                 u32::from(channels.get()),
                 sample_rate.get(),
             ),
@@ -479,6 +479,24 @@ mod tests {
         let stretched = PitchPreservingSpeed::new(source, 2.0);
 
         assert_eq!(stretched.total_duration(), Some(Duration::from_millis(500)));
+    }
+
+    #[test]
+    fn changing_speed_while_playing_keeps_the_playhead_from_rewinding() {
+        let mut state = PlaybackState::new();
+        state.start(PlaybackTarget::Timeline, 10_000);
+        let before = state.elapsed_position_ms(0);
+
+        state.set_speed(2.0);
+        let after = state.elapsed_position_ms(0);
+
+        // A live speed change re-bases the clock at the current position; it
+        // must never rewind the playhead toward zero (the "playback restarts
+        // from the top on a speed change" regression class).
+        assert!(
+            (before..before + 200).contains(&after),
+            "speed change moved the playhead from {before}ms to {after}ms"
+        );
     }
 
     fn build_half_silent_media(path: &Path) {

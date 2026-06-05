@@ -18,8 +18,9 @@ pub const DEFAULT_PIXELS_PER_SECOND: f32 = 90.0;
 /// Multiplier applied per zoom-in / zoom-out step.
 pub const ZOOM_STEP: f32 = 1.25;
 
-/// Pixel width of a clip trim handle and the hit margin used to grab it.
-pub const TRIM_HANDLE_PX: f32 = 9.0;
+/// Pixel width of a clip trim handle and the hit margin used to grab it. Kept
+/// generous so the edge is easy to grab without slipping into a move drag.
+pub const TRIM_HANDLE_PX: f32 = 12.0;
 /// Smallest duration a clip may be trimmed to, in milliseconds.
 pub const MIN_CLIP_DURATION_MS: u64 = 100;
 /// Target spacing between ruler ticks, in pixels.

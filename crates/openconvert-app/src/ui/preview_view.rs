@@ -206,7 +206,7 @@ impl OpenConvertApp {
             self.playback.set_muted(!self.playback.is_muted());
         }
         if let Some(speed) = speed_changed {
-            self.playback.set_speed(speed);
+            self.set_playback_speed(target, speed);
         }
         if volume_changed {
             self.playback.set_volume(volume);

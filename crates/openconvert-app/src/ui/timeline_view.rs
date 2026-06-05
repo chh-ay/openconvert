@@ -887,13 +887,26 @@ fn paint_clip_overlay(
     );
 
     if selected && clip_rect.width() > 24.0 {
-        for edge_x in [clip_rect.left() + 4.0, clip_rect.right() - 4.0] {
+        // Draw a grab bar at each edge sized to the trim hit zone, so the
+        // draggable region is visible rather than an invisible margin.
+        let handle_w = TRIM_HANDLE_PX.min(clip_rect.width() / 3.0);
+        let edges = [
+            (clip_rect.left() + 2.0, clip_rect.left() + 2.0 + handle_w),
+            (clip_rect.right() - 2.0 - handle_w, clip_rect.right() - 2.0),
+        ];
+        for (min_x, max_x) in edges {
+            let handle_rect = Rect::from_min_max(
+                Pos2::new(min_x, clip_rect.top() + 5.0),
+                Pos2::new(max_x, clip_rect.bottom() - 5.0),
+            );
+            painter.rect_filled(handle_rect, 4.0, PALETTE_ACCENT);
+            let grip_x = handle_rect.center().x;
             painter.line_segment(
                 [
-                    Pos2::new(edge_x, clip_rect.top() + 6.0),
-                    Pos2::new(edge_x, clip_rect.bottom() - 6.0),
+                    Pos2::new(grip_x, handle_rect.top() + 4.0),
+                    Pos2::new(grip_x, handle_rect.bottom() - 4.0),
                 ],
-                Stroke::new(2.5, PALETTE_ACCENT),
+                Stroke::new(1.5, Color32::from_black_alpha(130)),
             );
         }
     }

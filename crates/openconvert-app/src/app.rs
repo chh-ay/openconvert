@@ -856,6 +856,26 @@ impl OpenConvertApp {
         }
     }
 
+    /// Applies a new playback speed. While playing, the audio is rebuilt from
+    /// the current position so the change is heard immediately: the libav audio
+    /// source bakes its time-stretch ratio in at construction, so it cannot be
+    /// retuned in place. The video clock just follows the rebased playback clock.
+    pub(crate) fn set_playback_speed(&mut self, target: PlaybackTarget, speed: f32) {
+        self.playback.set_speed(speed);
+        if !self.playback.is_playing() || self.playback.target() != target {
+            return;
+        }
+        let position_ms = self
+            .playback
+            .elapsed_position_ms(self.playback_position_ms(target));
+        match target {
+            PlaybackTarget::Timeline => self.editor.playhead_ms = position_ms,
+            PlaybackTarget::Convert => self.editor.convert_preview_ms = position_ms,
+        }
+        let audio_source = self.audio_source_for_target(target);
+        let _ = self.playback.restart_audio(audio_source);
+    }
+
     fn playback_position_ms(&self, target: PlaybackTarget) -> u64 {
         match target {
             PlaybackTarget::Timeline => self.editor.playhead_ms,
