@@ -15,9 +15,9 @@ use crate::theme::{
     PALETTE_TRACK_SELECTED, RADIUS_BUTTON, RADIUS_CARD,
 };
 use crate::timeline_geo::{
-    clip_zone, ms_to_px, px_to_ms, resolve_trim_end, resolve_trim_start, ruler_step_ms,
-    snap_move_start_ms, snap_ms, track_index_at_y, ClipPlacement, ClipZone, TimelineDrag,
-    TRIM_HANDLE_PX, ZOOM_STEP,
+    clip_context_ms, clip_zone, ms_to_px, px_to_ms, resolve_trim_end, resolve_trim_start,
+    ruler_step_ms, snap_move_start_ms, snap_ms, track_index_at_y, ClipPlacement, ClipZone,
+    TimelineDrag, TRIM_HANDLE_PX, ZOOM_STEP,
 };
 
 const HEADER_WIDTH: f32 = 88.0;
@@ -507,6 +507,21 @@ impl OpenConvertApp {
                     }
                 }
 
+                let pointer_context = clip_response
+                    .interact_pointer_pos()
+                    .map(|pos| (pos.x, pos.y, x_to_ms(pos.x)));
+                let context_ms = clip_context_ms(
+                    pointer_context,
+                    (
+                        clip_rect.left(),
+                        clip_rect.right(),
+                        clip_rect.top(),
+                        clip_rect.bottom(),
+                    ),
+                    self.editor.playhead_ms,
+                    (clip.timeline_start_ms, clip.timeline_end_ms()),
+                );
+
                 if clip_response.drag_started() {
                     if let Some(p) = clip_response.interact_pointer_pos() {
                         let zone = clip_zone(clip_left, clip_width, p.x, TRIM_HANDLE_PX);
@@ -515,13 +530,11 @@ impl OpenConvertApp {
                     }
                 } else if clip_response.clicked() {
                     pending_select = Some((track.id, clip.id));
+                } else if clip_response.secondary_clicked() {
+                    self.editor.playhead_ms = context_ms;
+                    pending_select = Some((track.id, clip.id));
                 }
 
-                let context_ms = clip_response
-                    .interact_pointer_pos()
-                    .map(|pos| x_to_ms(pos.x))
-                    .unwrap_or(self.editor.playhead_ms)
-                    .clamp(clip.timeline_start_ms, clip.timeline_end_ms());
                 clip_response.context_menu(|ui| {
                     if ui.button("Cut here").clicked() {
                         pending_context =

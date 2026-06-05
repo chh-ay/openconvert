@@ -43,6 +43,29 @@ pub fn px_to_ms(px: f32, pixels_per_second: f32) -> u64 {
     (px / pixels_per_second * 1_000.0).round() as u64
 }
 
+/// Resolves the timeline position used by a clip context-menu action.
+///
+/// Pointer coordinates are only trusted while still inside the clip rectangle;
+/// once the popup is open, pointer events belong to the menu, so the caller's
+/// fallback playhead (captured on right-click) keeps "Cut/Trim here" stable.
+pub fn clip_context_ms(
+    pointer: Option<(f32, f32, u64)>,
+    clip_rect_px: (f32, f32, f32, f32),
+    fallback_ms: u64,
+    clip_range_ms: (u64, u64),
+) -> u64 {
+    let (clip_left_px, clip_right_px, clip_top_px, clip_bottom_px) = clip_rect_px;
+    let (clip_start_ms, clip_end_ms) = clip_range_ms;
+    let pointer_ms = pointer
+        .filter(|(x, y, _)| {
+            *x >= clip_left_px && *x <= clip_right_px && *y >= clip_top_px && *y <= clip_bottom_px
+        })
+        .map(|(_, _, ms)| ms);
+    pointer_ms
+        .unwrap_or(fallback_ms)
+        .clamp(clip_start_ms, clip_end_ms)
+}
+
 /// Snaps `target` to the nearest `candidate` within `threshold_ms`.
 ///
 /// Returns `target` unchanged when no candidate is close enough, and the
@@ -375,6 +398,36 @@ mod tests {
         }
     }
 
+    mod clip_context_ms {
+        use super::*;
+
+        #[test]
+        fn uses_pointer_position_inside_the_clip() {
+            assert_eq!(
+                clip_context_ms(
+                    Some((150.0, 30.0, 1_500)),
+                    (100.0, 200.0, 20.0, 40.0),
+                    500,
+                    (0, 2_000),
+                ),
+                1_500
+            );
+        }
+
+        #[test]
+        fn keeps_fallback_when_pointer_has_moved_to_the_menu() {
+            assert_eq!(
+                clip_context_ms(
+                    Some((150.0, 80.0, 1_500)),
+                    (100.0, 200.0, 20.0, 40.0),
+                    500,
+                    (0, 2_000),
+                ),
+                500
+            );
+        }
+    }
+
     mod ruler_step_ms {
         use super::*;
 
@@ -385,7 +438,7 @@ mod tests {
 
         #[test]
         fn supports_hour_scale_overview() {
-            assert!(ms_to_px(3_600_000, MIN_PIXELS_PER_SECOND) <= 900.0);
+            assert_eq!(ruler_step_ms(MIN_PIXELS_PER_SECOND), 300_000);
         }
     }
 }

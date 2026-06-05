@@ -88,6 +88,8 @@ jobs:
         with:
           cache-on-failure: true
       - name: Build (static libav, self-contained)
+        env:
+          BINDGEN_EXTRA_CLANG_ARGS_x86_64_pc_windows_gnu: --target=x86_64-pc-windows-gnu
         run: cargo build -p openconvert-app --release --locked --features static-ffmpeg
       - uses: actions/upload-artifact@v4
         with:

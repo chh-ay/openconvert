@@ -21,6 +21,7 @@ eframe = { version = "0.34.3", default-features = false, features = ["accesskit"
 egui = "0.34.3"
 egui_extras = { version = "0.34.3", features = ["image"] }
 rodio = { version = "0.22.2", default-features = false, features = ["playback", "mp3", "mp4", "vorbis", "flac", "wav"] }
+signalsmith-stretch = "0.1.3"
 ffmpeg-next = "8.1.0"
 tempfile = "3.27.0"
 
