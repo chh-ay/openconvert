@@ -45,12 +45,19 @@ fn pick_path(mode: DialogMode, title: &str, pattern: Option<&str>) -> Option<Pat
         linux_pick_path(mode, title, pattern)
     }
 
+    #[cfg(target_os = "macos")]
+    {
+        let _ = pattern;
+        macos_pick_path(mode, title)
+    }
+
     #[cfg(target_os = "windows")]
     {
+        let _ = pattern;
         windows_pick_path(mode, title)
     }
 
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
         let _ = (mode, title, pattern);
         None
@@ -143,6 +150,32 @@ fn windows_save_file_script(title: &str) -> String {
 #[cfg(target_os = "windows")]
 fn powershell_escape(value: &str) -> String {
     value.replace('\'', "''")
+}
+
+#[cfg(target_os = "macos")]
+fn macos_pick_path(mode: DialogMode, title: &str) -> Option<PathBuf> {
+    // AppleScript's `choose file` / `choose file name` are the standard macOS
+    // native pickers; `POSIX path of` prints the selection to stdout, and a
+    // cancel exits non-zero so `output_path` maps it to `None`.
+    let prompt = applescript_escape(title);
+    let script = match mode {
+        DialogMode::OpenFile => {
+            format!("POSIX path of (choose file with prompt \"{prompt}\")")
+        }
+        DialogMode::SaveFile => {
+            format!("POSIX path of (choose file name with prompt \"{prompt}\")")
+        }
+    };
+
+    let mut command = Command::new("osascript");
+    command.arg("-e").arg(script);
+
+    output_path(command)
+}
+
+#[cfg(target_os = "macos")]
+fn applescript_escape(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 fn output_path(mut command: Command) -> Option<PathBuf> {
