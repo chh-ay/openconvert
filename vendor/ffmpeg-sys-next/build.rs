@@ -425,9 +425,15 @@ fn build(sysroot: Option<&str>) -> io::Result<()> {
     // make it static
     configure.arg("--enable-static");
     configure.arg("--disable-shared");
-    // windows includes threading in the standard library
-    #[cfg(not(target_env = "msvc"))]
-    {
+    // MinGW can use winpthreads, but FFmpeg has a native Win32 thread backend.
+    // Forcing `--enable-pthreads` prevents configure from probing w32threads and
+    // fails on GitHub's MSYS2 runner with "pthreads requested but not found".
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
+    let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
+    if target_os == "windows" {
+        configure.arg("--disable-pthreads");
+        configure.arg("--enable-w32threads");
+    } else if target_env != "msvc" {
         configure.arg("--enable-pthreads");
     }
 
@@ -537,7 +543,6 @@ fn build(sysroot: Option<&str>) -> io::Result<()> {
     // make sure to only enable related hw acceleration features for a correct
     // target os. This allows to leave allows cargo features enable and control
     // ffmpeg compilation using target only
-    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
 
     // Apple VideoToolbox (iOS and macOS)
     if env::var("CARGO_FEATURE_BUILD_VIDEOTOOLBOX").is_ok()
