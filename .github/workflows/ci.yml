@@ -1,7 +1,5 @@
 name: ci
 
-# Runs on Blacksmith runners; requires the blacksmith.sh GitHub App installed on
-# this repo (https://app.blacksmith.sh), or these jobs queue with no runner.
 # Cheap checks on Linux only (fmt + clippy + tests), run on pull requests so
 # code is validated before it reaches main. The expensive 3-OS release
 # binaries are built separately by release.yml on version tags.
@@ -11,7 +9,7 @@ on:
 
 jobs:
   check:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     container: archlinux:latest
     steps:
       - uses: actions/checkout@v4

@@ -5,10 +5,6 @@ name: release
 # builds on its own runner. Linux/Arch links the system libav (the distro ships
 # it); macOS and Windows produce self-contained binaries via `static-ffmpeg`
 # because those systems have no libav.
-#
-# Runners are Blacksmith (runs-on: blacksmith-*) and require the blacksmith.sh
-# GitHub App installed on this repo, or jobs queue with no runner. On the free
-# tier macOS is the cost driver: 1 macOS-6vcpu minute = 20 x64-2vcpu minutes.
 on:
   workflow_dispatch:
   push:
@@ -17,7 +13,7 @@ on:
 
 jobs:
   linux-arch:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     container: archlinux:latest
     steps:
       - uses: actions/checkout@v4
@@ -34,7 +30,7 @@ jobs:
           path: target/release/openconvert-app
 
   macos:
-    runs-on: blacksmith-6vcpu-macos-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -55,7 +51,7 @@ jobs:
           path: target/release/openconvert-app
 
   windows:
-    runs-on: blacksmith-4vcpu-windows-2025
+    runs-on: windows-latest
     defaults:
       run:
         shell: msys2 {0}
@@ -82,7 +78,7 @@ jobs:
     needs: [linux-arch, macos, windows]
     # Publish whatever built, even if one OS fails, on tag pushes only.
     if: ${{ always() && startsWith(github.ref, 'refs/tags/') }}
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
