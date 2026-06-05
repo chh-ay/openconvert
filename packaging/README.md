@@ -32,6 +32,10 @@ Users have no libav, so build self-contained:
 
 ```sh
 brew install nasm pkg-config x264 x265 libvpx opus lame
+# lame ships no .pc file; macOS clang does not search the brew prefix by
+# default, so point it there for FFmpeg's configure compile/link tests.
+export CPATH="$(brew --prefix)/include"
+export LIBRARY_PATH="$(brew --prefix)/lib"
 cargo build -p openconvert-app --release --locked --features static-ffmpeg
 ```
 

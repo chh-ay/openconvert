@@ -1,10 +1,9 @@
 name: ci
 
-# Cheap per-push checks on Linux only (fmt + clippy + tests). Release binaries
-# for all three OSes are built separately by release.yml on version tags.
+# Cheap checks on Linux only (fmt + clippy + tests), run on pull requests so
+# code is validated before it reaches main. The expensive 3-OS release
+# binaries are built separately by release.yml on version tags.
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
