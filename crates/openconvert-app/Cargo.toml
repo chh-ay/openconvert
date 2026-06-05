@@ -1,0 +1,23 @@
+[package]
+name = "openconvert-app"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+eframe.workspace = true
+egui.workspace = true
+rodio.workspace = true
+egui_extras.workspace = true
+openconvert-core = { path = "../openconvert-core" }
+openconvert-media = { path = "../openconvert-media" }
+
+[features]
+# Forward to the media crate's static FFmpeg/libav linking (see its docs). Build
+# a self-contained release with: cargo build -p openconvert-app --release --features static-ffmpeg
+static-ffmpeg = ["openconvert-media/static-ffmpeg"]
+
+[dev-dependencies]
+tempfile.workspace = true

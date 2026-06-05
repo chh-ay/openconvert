@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=OpenConvert
+Comment=Local-first video editor
+Exec=openconvert-app
+Icon=openconvert
+Terminal=false
+Categories=AudioVideo;Video;AudioVideoEditing;

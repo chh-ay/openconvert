@@ -1,0 +1,35 @@
+[package]
+name = "openconvert-media"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+openconvert-core = { path = "../openconvert-core" }
+ffmpeg-next.workspace = true
+
+[features]
+# Statically link FFmpeg/libav into the binary so it runs with no system libav
+# (and, paired with in-process export, no external `ffmpeg` either). Compiles
+# FFmpeg plus the GPL codec set from source: requires `nasm` + a C toolchain,
+# and makes the resulting binary GPL-licensed.
+static-ffmpeg = [
+    "ffmpeg-next/build",
+    "ffmpeg-next/build-lib-x264",
+    "ffmpeg-next/build-lib-x265",
+    "ffmpeg-next/build-lib-vpx",
+    "ffmpeg-next/build-lib-opus",
+    "ffmpeg-next/build-lib-mp3lame",
+    "ffmpeg-next/build-zlib",
+    "ffmpeg-next/build-license-gpl",
+]
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

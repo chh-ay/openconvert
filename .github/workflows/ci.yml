@@ -1,0 +1,27 @@
+name: ci
+
+# Cheap per-push checks on Linux only (fmt + clippy + tests). Release binaries
+# for all three OSes are built separately by release.yml on version tags.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain and libraries
+        run: |
+          pacman -Syu --noconfirm --needed \
+            rust cargo pkgconf clang ffmpeg \
+            alsa-lib libxkbcommon wayland libx11 libxcursor libxi libxrandr libglvnd
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Test
+        run: cargo test --workspace

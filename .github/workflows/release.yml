@@ -1,0 +1,90 @@
+name: release
+
+# Per-OS native builds, then a published GitHub Release with the binaries.
+# Cross-compiling a static FFmpeg from one host is impractical, so each target
+# builds on its own runner. Linux/Arch links the system libav (the distro ships
+# it); macOS and Windows produce self-contained binaries via `static-ffmpeg`
+# because those systems have no libav.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  linux-arch:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain and runtime libraries
+        run: |
+          pacman -Syu --noconfirm --needed \
+            rust cargo pkgconf clang ffmpeg \
+            alsa-lib libxkbcommon wayland libx11 libxcursor libxi libxrandr libglvnd
+      - name: Build (dynamic libav)
+        run: cargo build -p openconvert-app --release --locked
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openconvert-linux-x86_64
+          path: target/release/openconvert-app
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install build tools
+        run: brew install nasm pkg-config
+      - name: Build (static libav, self-contained)
+        run: cargo build -p openconvert-app --release --locked --features static-ffmpeg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openconvert-macos
+          path: target/release/openconvert-app
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            base-devel git make diffutils nasm yasm
+            mingw-w64-x86_64-toolchain mingw-w64-x86_64-rust
+            mingw-w64-x86_64-clang mingw-w64-x86_64-pkgconf
+      - name: Build (static libav, self-contained)
+        run: cargo build -p openconvert-app --release --locked --features static-ffmpeg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openconvert-windows-x86_64
+          path: target/release/openconvert-app.exe
+
+  publish:
+    needs: [linux-arch, macos, windows]
+    # Publish whatever built, even if one OS fails, on tag pushes only.
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Stage release binaries
+        run: |
+          mkdir -p release
+          cp artifacts/openconvert-linux-x86_64/openconvert-app release/openconvert-linux-x86_64 || true
+          cp artifacts/openconvert-macos/openconvert-app release/openconvert-macos || true
+          cp artifacts/openconvert-windows-x86_64/openconvert-app.exe release/openconvert-windows-x86_64.exe || true
+          ls -l release
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true
+          fail_on_unmatched_files: false

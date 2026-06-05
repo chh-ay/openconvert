@@ -1,0 +1,48 @@
+# Maintainer: openconvert
+pkgname=openconvert
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Interactive CapCut-inspired video editor with in-process libav export"
+arch=('x86_64')
+url="https://example.invalid/openconvert"
+license=('GPL-3.0-or-later')
+# Dynamic build: link against the system libraries Arch already ships instead of
+# bundling a self-contained binary. libav/codecs come from `ffmpeg`.
+depends=(
+  'ffmpeg'
+  'alsa-lib'
+  'libxkbcommon'
+  'wayland'
+  'libx11'
+  'libxcursor'
+  'libxi'
+  'libxrandr'
+  'libglvnd'
+  'gcc-libs'
+  'glibc'
+)
+makedepends=(
+  'rust'
+  'cargo'
+  'pkgconf'
+  'clang'
+)
+# One dialog provider is needed at runtime for open/save dialogs.
+optdepends=(
+  'zenity: file open/save dialogs (preferred)'
+  'kdialog: file open/save dialogs (fallback)'
+)
+options=('!lto')
+source=()
+
+build() {
+  cd "$startdir/../.."
+  cargo build -p openconvert-app --release --locked
+}
+
+package() {
+  cd "$startdir/../.."
+  install -Dm755 "target/release/openconvert-app" "$pkgdir/usr/bin/openconvert"
+  install -Dm644 "packaging/linux/openconvert.desktop" \
+    "$pkgdir/usr/share/applications/openconvert.desktop"
+}

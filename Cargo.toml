@@ -1,0 +1,46 @@
+[workspace]
+members = [
+    "crates/openconvert-core",
+    "crates/openconvert-media",
+    "crates/openconvert-app",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "GPL-3.0-or-later"
+repository = "https://example.invalid/openconvert"
+
+[workspace.dependencies]
+anyhow = "1.0.102"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+thiserror = "2.0.18"
+eframe = { version = "0.34.3", default-features = false, features = ["accesskit", "default_fonts", "glow", "wayland", "x11"] }
+egui = "0.34.3"
+egui_extras = { version = "0.34.3", features = ["image"] }
+rodio = { version = "0.22.2", default-features = false, features = ["playback", "mp3", "mp4", "vorbis", "flac", "wav"] }
+ffmpeg-next = "8.1.0"
+tempfile = "3.27.0"
+
+[workspace.lints.rust]
+future-incompatible = { level = "warn", priority = -2 }
+missing_docs = { level = "deny", priority = 0 }
+nonstandard_style = { level = "deny", priority = -1 }
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = 10 }
+perf = { level = "deny", priority = 9 }
+redundant_clone = { level = "deny", priority = 8 }
+needless_collect = { level = "deny", priority = 8 }
+clone_on_copy = { level = "deny", priority = 8 }
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = "z"
+panic = "abort"
+strip = "symbols"
