@@ -34,8 +34,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install build tools
-        run: brew install nasm pkg-config
+      - name: Install build tools and GPL codecs
+        run: brew install nasm pkg-config x264 x265 libvpx opus lame
       - name: Build (static libav, self-contained)
         run: cargo build -p openconvert-app --release --locked --features static-ffmpeg
       - uses: actions/upload-artifact@v4
@@ -58,6 +58,8 @@ jobs:
             base-devel git make diffutils nasm yasm
             mingw-w64-x86_64-toolchain mingw-w64-x86_64-rust
             mingw-w64-x86_64-clang mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-x264 mingw-w64-x86_64-x265 mingw-w64-x86_64-libvpx
+            mingw-w64-x86_64-opus mingw-w64-x86_64-lame
       - name: Build (static libav, self-contained)
         run: cargo build -p openconvert-app --release --locked --features static-ffmpeg
       - uses: actions/upload-artifact@v4

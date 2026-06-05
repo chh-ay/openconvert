@@ -31,7 +31,7 @@ It depends on `ffmpeg`, `alsa-lib`, the X11/Wayland/GL libraries `eframe` needs,
 Users have no libav, so build self-contained:
 
 ```sh
-brew install nasm pkg-config
+brew install nasm pkg-config x264 x265 libvpx opus lame
 cargo build -p openconvert-app --release --locked --features static-ffmpeg
 ```
 
@@ -49,7 +49,9 @@ configure requires):
 # in an MSYS2 MINGW64 shell
 pacman -S --needed base-devel make diffutils nasm yasm \
   mingw-w64-x86_64-toolchain mingw-w64-x86_64-rust \
-  mingw-w64-x86_64-clang mingw-w64-x86_64-pkgconf
+  mingw-w64-x86_64-clang mingw-w64-x86_64-pkgconf \
+  mingw-w64-x86_64-x264 mingw-w64-x86_64-x265 mingw-w64-x86_64-libvpx \
+  mingw-w64-x86_64-opus mingw-w64-x86_64-lame
 cargo build -p openconvert-app --release --locked --features static-ffmpeg
 ```
 
