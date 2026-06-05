@@ -844,6 +844,49 @@ mod tests {
     }
 
     #[test]
+    fn validate_rejects_overlapping_clips() {
+        let (mut timeline, _, _) = one_clip_timeline();
+        timeline.tracks[0].clips.push(Clip {
+            id: ClipId(2),
+            source_path: "overlap.mp4".into(),
+            timeline_start_ms: 500,
+            source_start_ms: 0,
+            duration_ms: 1_000,
+            source_duration_ms: 0,
+            has_audio: true,
+            source_width: 0,
+            source_height: 0,
+            muted: false,
+            kind: ClipKind::Video,
+            fit_mode: FitMode::Contain,
+        });
+
+        assert_eq!(timeline.validate(), Err(TimelineError::OverlappingClip));
+    }
+
+    #[test]
+    fn validate_rejects_zero_duration_clips() {
+        let (mut timeline, _, _) = one_clip_timeline();
+        timeline.tracks[0].clips[0].duration_ms = 0;
+
+        assert_eq!(timeline.validate(), Err(TimelineError::EmptyClip));
+    }
+
+    #[test]
+    fn undo_returns_error_when_history_is_empty() {
+        let mut timeline = Timeline::new();
+
+        assert_eq!(timeline.undo(), Err(TimelineError::NothingToUndo));
+    }
+
+    #[test]
+    fn redo_returns_error_when_history_is_empty() {
+        let mut timeline = Timeline::new();
+
+        assert_eq!(timeline.redo(), Err(TimelineError::NothingToRedo));
+    }
+
+    #[test]
     fn split_rejects_clip_edges_and_preserves_original_until_valid_split() {
         let (mut timeline, track, clip) = one_clip_timeline();
         assert_eq!(
@@ -975,7 +1018,14 @@ mod tests {
             .unwrap();
         timeline.trim_clip(track, clip, 0, 500, 3_000).unwrap();
         let clip = &timeline.tracks()[0].clips()[0];
-        assert_eq!((clip.source_start_ms, clip.duration_ms), (500, 3_000));
+        assert_eq!(
+            (
+                clip.timeline_start_ms,
+                clip.source_start_ms,
+                clip.duration_ms,
+            ),
+            (0, 500, 3_000)
+        );
     }
 
     #[test]

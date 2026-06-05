@@ -131,9 +131,49 @@ mod tests {
         path
     }
 
+    fn build_still_image(dir: &Path) -> PathBuf {
+        let path = dir.join("still.png");
+        let status = Command::new("ffmpeg")
+            .args([
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=red:s=64x48",
+                "-frames:v",
+                "1",
+                "-y",
+            ])
+            .arg(&path)
+            .status()
+            .expect("ffmpeg builds the still image asset");
+        assert!(
+            status.success(),
+            "ffmpeg failed to build the still image asset"
+        );
+        path
+    }
+
     #[test]
-    fn is_still_image_classifies_a_still_png_as_an_image() {
-        assert!(is_still_image(Some("png"), None, None));
+    fn probe_media_classifies_a_real_png_as_an_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let image = build_still_image(dir.path());
+
+        let result = probe_media(&image).unwrap();
+
+        assert!(result.is_image);
+    }
+
+    #[test]
+    fn probe_media_reads_still_image_dimensions_from_a_real_png() {
+        let dir = tempfile::tempdir().unwrap();
+        let image = build_still_image(dir.path());
+
+        let result = probe_media(&image).unwrap();
+
+        assert_eq!((result.width, result.height), (Some(64), Some(48)));
     }
 
     #[test]

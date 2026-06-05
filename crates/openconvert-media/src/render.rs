@@ -703,6 +703,83 @@ mod tests {
         path
     }
 
+    fn build_solid_video(dir: &Path, name: &str, color: &str) -> std::path::PathBuf {
+        let path = dir.join(name);
+        let status = std::process::Command::new("ffmpeg")
+            .args(["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i"])
+            .arg(format!("color=c={color}:s=160x120:r=30:d=1"))
+            .args(["-c:v", "libx264", "-pix_fmt", "yuv420p", "-y"])
+            .arg(&path)
+            .status()
+            .expect("ffmpeg builds the solid video asset");
+        assert!(
+            status.success(),
+            "ffmpeg failed to build the solid video asset"
+        );
+        path
+    }
+
+    fn build_audio_with_leading_silence(dir: &Path) -> std::path::PathBuf {
+        let path = dir.join("tone_after_silence.m4a");
+        let status = std::process::Command::new("ffmpeg")
+            .args([
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "aevalsrc=if(lt(t\\,0.5)\\,0\\,0.5*sin(2*PI*880*t)):s=48000:d=1",
+                "-c:a",
+                "aac",
+                "-y",
+            ])
+            .arg(&path)
+            .status()
+            .expect("ffmpeg builds the audio test asset");
+        assert!(
+            status.success(),
+            "ffmpeg failed to build the audio test asset"
+        );
+        path
+    }
+
+    fn decode_mono_samples(path: &Path, dir: &Path) -> Vec<f32> {
+        let pcm = dir.join("decoded.f32");
+        let status = std::process::Command::new("ffmpeg")
+            .args(["-hide_banner", "-loglevel", "error", "-i"])
+            .arg(path)
+            .args(["-f", "f32le", "-ac", "1", "-ar", "48000", "-y"])
+            .arg(&pcm)
+            .status()
+            .expect("ffmpeg decodes exported audio");
+        assert!(status.success(), "ffmpeg failed to decode exported audio");
+        std::fs::read(pcm)
+            .expect("decoded pcm is readable")
+            .chunks_exact(4)
+            .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap()))
+            .collect()
+    }
+
+    fn rms(samples: &[f32], start_ms: usize, duration_ms: usize) -> f32 {
+        let start = start_ms * 48;
+        let end = ((start_ms + duration_ms) * 48).min(samples.len());
+        let window = &samples[start..end];
+        let sum = window.iter().map(|sample| sample * sample).sum::<f32>();
+        (sum / window.len() as f32).sqrt()
+    }
+
+    fn center_rgb(frame: &DecodedFrame) -> [u8; 3] {
+        let x = frame.width as usize / 2;
+        let y = frame.height as usize / 2;
+        let index = (y * frame.width as usize + x) * 4;
+        [
+            frame.rgba[index],
+            frame.rgba[index + 1],
+            frame.rgba[index + 2],
+        ]
+    }
+
     #[test]
     fn renders_a_timeline_clip_to_an_in_process_video() {
         let dir = tempfile::tempdir().unwrap();
@@ -743,27 +820,49 @@ mod tests {
     }
 
     #[test]
-    fn renders_a_visible_non_black_frame_for_overlapping_clips() {
+    fn render_timeline_composites_the_visual_top_track_over_lower_tracks() {
         let dir = tempfile::tempdir().unwrap();
-        let sample = build_sample(dir.path());
+        let top_video = build_solid_video(dir.path(), "top.mp4", "red");
+        let bottom_video = build_solid_video(dir.path(), "bottom.mp4", "blue");
         let output = dir.path().join("overlap.mp4");
 
         let mut timeline = Timeline::new();
-        let lower = timeline.add_track();
-        let upper = timeline.add_track();
-        timeline
-            .add_clip(lower, sample.to_string_lossy().into_owned(), 0, 0, 1_000)
+        let top_track = timeline.add_track();
+        let bottom_track = timeline.add_track();
+        let top_clip = timeline
+            .add_clip(
+                top_track,
+                top_video.to_string_lossy().into_owned(),
+                0,
+                0,
+                1_000,
+            )
+            .unwrap();
+        let bottom_clip = timeline
+            .add_clip(
+                bottom_track,
+                bottom_video.to_string_lossy().into_owned(),
+                0,
+                0,
+                1_000,
+            )
             .unwrap();
         timeline
-            .add_clip(upper, sample.to_string_lossy().into_owned(), 0, 0, 1_000)
+            .set_clip_video_size(top_track, top_clip, 160, 120)
+            .unwrap();
+        timeline
+            .set_clip_video_size(bottom_track, bottom_clip, 160, 120)
             .unwrap();
 
         render_timeline(&timeline, &output, ExportOptions::default())
             .expect("the overlapping timeline renders in-process");
 
-        let frame = decode_frame_at(&output, 500, 1_280, 720).expect("a middle frame decodes");
-        let luminance: u64 = frame.rgba.iter().map(|&b| u64::from(b)).sum();
-        assert!(luminance > 0, "exported frame must not be uniformly black");
+        let frame = decode_frame_at(&output, 500, 160, 120).expect("a middle frame decodes");
+        let [red, green, blue] = center_rgb(&frame);
+        assert!(
+            red > 180 && green < 80 && blue < 80,
+            "top pixel was [{red}, {green}, {blue}]"
+        );
     }
 
     #[test]
@@ -785,7 +884,73 @@ mod tests {
         render_timeline(&timeline, &output, options).expect("the audio-only timeline renders");
 
         let probe = probe_media(&output).expect("the rendered file is probeable");
-        assert!(probe.audio_codec.is_some());
-        assert_eq!(probe.width, None);
+        assert_eq!((probe.audio_codec.is_some(), probe.width), (true, None));
+    }
+
+    #[test]
+    fn render_timeline_omits_the_audio_stream_when_the_only_audio_clip_is_muted() {
+        let dir = tempfile::tempdir().unwrap();
+        let sample = build_sample(dir.path());
+        let output = dir.path().join("muted.mp4");
+
+        let mut timeline = Timeline::new();
+        let track = timeline.add_track();
+        let clip = timeline
+            .add_clip(track, sample.to_string_lossy().into_owned(), 0, 0, 1_000)
+            .unwrap();
+        timeline.toggle_clip_mute(track, clip).unwrap();
+
+        render_timeline(&timeline, &output, ExportOptions::default())
+            .expect("the muted timeline renders in-process");
+
+        let probe = probe_media(&output).expect("the rendered file is probeable");
+        assert_eq!(probe.audio_codec, None);
+    }
+
+    #[test]
+    fn render_timeline_inserts_silence_before_a_late_audio_clip() {
+        let dir = tempfile::tempdir().unwrap();
+        let sample = build_sample(dir.path());
+        let output = dir.path().join("delayed.mp3");
+
+        let mut timeline = Timeline::new();
+        let track = timeline.add_track();
+        timeline
+            .add_clip(track, sample.to_string_lossy().into_owned(), 500, 0, 500)
+            .unwrap();
+        let options = ExportOptions {
+            container: Container::Mp3,
+            ..ExportOptions::default()
+        };
+        render_timeline(&timeline, &output, options).expect("the delayed audio renders");
+
+        let samples = decode_mono_samples(&output, dir.path());
+        let quiet = rms(&samples, 100, 200);
+        let loud = rms(&samples, 650, 200);
+        assert!(
+            quiet < loud * 0.1,
+            "quiet rms {quiet} was not below loud rms {loud}"
+        );
+    }
+
+    #[test]
+    fn render_timeline_uses_the_clip_source_offset_for_audio() {
+        let dir = tempfile::tempdir().unwrap();
+        let sample = build_audio_with_leading_silence(dir.path());
+        let output = dir.path().join("source_offset.mp3");
+
+        let mut timeline = Timeline::new();
+        let track = timeline.add_track();
+        timeline
+            .add_clip(track, sample.to_string_lossy().into_owned(), 0, 500, 400)
+            .unwrap();
+        let options = ExportOptions {
+            container: Container::Mp3,
+            ..ExportOptions::default()
+        };
+        render_timeline(&timeline, &output, options).expect("the source-offset audio renders");
+
+        let samples = decode_mono_samples(&output, dir.path());
+        assert!(rms(&samples, 50, 200) > 0.05);
     }
 }

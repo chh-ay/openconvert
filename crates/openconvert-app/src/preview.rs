@@ -76,9 +76,29 @@ mod tests {
         use super::*;
 
         #[test]
-        fn near_positions_share_a_key() {
+        fn positions_in_the_same_bucket_share_a_key() {
             let path = Path::new("clip.mp4");
-            assert_eq!(preview_key(path, 1_000), preview_key(path, 1_010));
+            assert_eq!(
+                preview_key(path, PREVIEW_BUCKET_MS),
+                preview_key(path, PREVIEW_BUCKET_MS + PREVIEW_BUCKET_MS / 2 - 1)
+            );
+        }
+
+        #[test]
+        fn positions_in_the_next_bucket_have_different_keys() {
+            let path = Path::new("clip.mp4");
+            assert_ne!(
+                preview_key(path, PREVIEW_BUCKET_MS + PREVIEW_BUCKET_MS / 2 - 1),
+                preview_key(path, PREVIEW_BUCKET_MS + PREVIEW_BUCKET_MS / 2)
+            );
+        }
+
+        #[test]
+        fn different_paths_have_different_keys() {
+            assert_ne!(
+                preview_key(Path::new("left.mp4"), 1_000),
+                preview_key(Path::new("right.mp4"), 1_000)
+            );
         }
     }
 

@@ -331,6 +331,42 @@ mod tests {
         path
     }
 
+    fn build_still_image(dir: &Path) -> PathBuf {
+        let path = dir.join("still.png");
+        let status = Command::new("ffmpeg")
+            .args([
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=red:s=64x48",
+                "-frames:v",
+                "1",
+                "-y",
+            ])
+            .arg(&path)
+            .status()
+            .expect("ffmpeg builds the still image asset");
+        assert!(
+            status.success(),
+            "ffmpeg failed to build the still image asset"
+        );
+        path
+    }
+
+    fn center_rgb(frame: &DecodedFrame) -> [u8; 3] {
+        let x = frame.width as usize / 2;
+        let y = frame.height as usize / 2;
+        let index = (y * frame.width as usize + x) * 4;
+        [
+            frame.rgba[index],
+            frame.rgba[index + 1],
+            frame.rgba[index + 2],
+        ]
+    }
+
     #[test]
     fn decodes_first_frame_preserving_aspect_within_the_box() {
         let dir = tempfile::tempdir().unwrap();
@@ -382,5 +418,35 @@ mod tests {
             .expect("a frame near 200ms after a backward seek on the reused decoder");
 
         assert_eq!((frame.width, frame.height), (160, 120));
+    }
+
+    #[test]
+    fn decode_frame_at_decodes_a_real_still_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let image = build_still_image(dir.path());
+
+        let frame = decode_frame_at(&image, 500, 160, 160).expect("the still image decodes");
+        let [red, green, blue] = center_rgb(&frame);
+
+        assert!(
+            red > 200 && green < 40 && blue < 40,
+            "center pixel was [{red}, {green}, {blue}]"
+        );
+    }
+
+    #[test]
+    fn scrub_decoder_decodes_a_real_still_image_after_reuse() {
+        let dir = tempfile::tempdir().unwrap();
+        let image = build_still_image(dir.path());
+
+        let mut decoder = ScrubDecoder::new();
+        decoder
+            .frame_at(&image, 0, 160, 160)
+            .expect("the first still image decode succeeds");
+        let frame = decoder
+            .frame_at(&image, 500, 160, 160)
+            .expect("the reused still image decoder reopens at eof");
+
+        assert_eq!((frame.width, frame.height), (64, 48));
     }
 }

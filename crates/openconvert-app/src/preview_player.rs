@@ -146,6 +146,30 @@ mod tests {
     use std::path::PathBuf;
     use std::process::Command;
 
+    fn decoded_frame(pts_ms: u64) -> DecodedFrame {
+        DecodedFrame {
+            pts_ms,
+            width: 1,
+            height: 1,
+            rgba: vec![0, 0, 0, 255],
+        }
+    }
+
+    fn player_with_frames(pts: &[u64]) -> PreviewPlayer {
+        let (tx, frames) = std::sync::mpsc::sync_channel(pts.len());
+        for &pts_ms in pts {
+            tx.send(decoded_frame(pts_ms)).unwrap();
+        }
+        drop(tx);
+
+        PreviewPlayer {
+            frames,
+            stop: Arc::new(AtomicBool::new(false)),
+            worker: None,
+            pending: VecDeque::new(),
+        }
+    }
+
     fn build_sample(dir: &std::path::Path) -> PathBuf {
         let path = dir.join("sample.mp4");
         let status = Command::new("ffmpeg")
@@ -171,6 +195,23 @@ mod tests {
     }
 
     #[test]
+    fn frame_at_returns_the_newest_decoded_frame_not_after_the_clock() {
+        let mut player = player_with_frames(&[40, 80, 120, 160]);
+
+        assert_eq!(player.frame_at(121).map(|frame| frame.pts_ms), Some(120));
+    }
+
+    #[test]
+    fn frame_at_keeps_future_frames_buffered_for_later_clocks() {
+        let mut player = player_with_frames(&[100, 200]);
+
+        let before_future = player.frame_at(150).map(|frame| frame.pts_ms);
+        let after_future = player.frame_at(250).map(|frame| frame.pts_ms);
+
+        assert_eq!((before_future, after_future), (Some(100), Some(200)));
+    }
+
+    #[test]
     fn delivers_a_decoded_frame_for_the_clock_position() {
         let dir = tempfile::tempdir().unwrap();
         let sample = build_sample(dir.path());
@@ -181,14 +222,16 @@ mod tests {
         let mut frame = None;
         for _ in 0..300 {
             if let Some(decoded) = player.frame_at(900) {
-                frame = Some(decoded);
-                break;
+                if decoded.pts_ms == 866 {
+                    frame = Some(decoded);
+                    break;
+                }
             }
             thread::sleep(Duration::from_millis(10));
         }
 
         // Dropping `player` at end of scope must not hang (worker joins cleanly).
-        assert!(frame.is_some());
+        assert_eq!(frame.map(|decoded| decoded.pts_ms), Some(866));
     }
 
     #[test]

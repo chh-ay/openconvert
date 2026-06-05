@@ -114,6 +114,13 @@ mod tests {
     }
 
     #[test]
+    fn load_rejects_malformed_json() {
+        let error = Project::from_json_str("{").unwrap_err();
+
+        assert!(matches!(error, ProjectError::Json(_)));
+    }
+
+    #[test]
     fn load_rejects_unknown_future_version() {
         let json = r#"{
             "format_version": 99,
@@ -128,6 +135,69 @@ mod tests {
         assert!(matches!(
             Project::from_json_str(json),
             Err(ProjectError::UnsupportedVersion(99))
+        ));
+    }
+
+    #[test]
+    fn load_rejects_timeline_with_overlapping_clips() {
+        let json = r#"{
+            "format_version": 1,
+            "name": "overlap",
+            "timeline": {
+                "next_track_id": 2,
+                "next_clip_id": 3,
+                "tracks": [{
+                    "id": 1,
+                    "clips": [
+                        {
+                            "id": 1,
+                            "source_path": "a.mp4",
+                            "timeline_start_ms": 0,
+                            "source_start_ms": 0,
+                            "duration_ms": 1000
+                        },
+                        {
+                            "id": 2,
+                            "source_path": "b.mp4",
+                            "timeline_start_ms": 500,
+                            "source_start_ms": 0,
+                            "duration_ms": 1000
+                        }
+                    ]
+                }]
+            }
+        }"#;
+
+        assert!(matches!(
+            Project::from_json_str(json),
+            Err(ProjectError::Timeline(TimelineError::OverlappingClip))
+        ));
+    }
+
+    #[test]
+    fn load_rejects_timeline_with_zero_duration_clip() {
+        let json = r#"{
+            "format_version": 1,
+            "name": "empty clip",
+            "timeline": {
+                "next_track_id": 2,
+                "next_clip_id": 2,
+                "tracks": [{
+                    "id": 1,
+                    "clips": [{
+                        "id": 1,
+                        "source_path": "empty.mp4",
+                        "timeline_start_ms": 0,
+                        "source_start_ms": 0,
+                        "duration_ms": 0
+                    }]
+                }]
+            }
+        }"#;
+
+        assert!(matches!(
+            Project::from_json_str(json),
+            Err(ProjectError::Timeline(TimelineError::EmptyClip))
         ));
     }
 }

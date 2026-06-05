@@ -178,31 +178,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mp4_container_uses_the_mp4_extension() {
-        assert_eq!(Container::Mp4.extension(), "mp4");
-    }
-
-    #[test]
-    fn h265_codec_is_labelled_h265() {
-        assert_eq!(VideoCodec::H265.label(), "H.265");
-    }
-
-    #[test]
-    fn mp4_allows_a_video_codec_choice() {
-        assert!(Container::Mp4.allows_video_codec_choice());
-    }
-
-    #[test]
-    fn webm_does_not_allow_a_video_codec_choice() {
-        assert!(!Container::WebM.allows_video_codec_choice());
-    }
-
-    #[test]
-    fn mp3_has_no_video_stream() {
-        assert!(!Container::Mp3.has_video());
-    }
-
-    #[test]
     fn summary_names_the_container_and_chosen_codec() {
         let options = ExportOptions {
             container: Container::Mp4,

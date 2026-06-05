@@ -130,6 +130,25 @@ mod tests {
     }
 
     #[test]
+    fn frame_cache_with_zero_capacity_keeps_no_entries() {
+        let mut cache = FrameCache::new(0);
+
+        cache.insert(1, "first");
+
+        assert_eq!((cache.len(), cache.get(&1)), (0, None));
+    }
+
+    #[test]
+    fn frame_cache_replaces_existing_key_without_growing() {
+        let mut cache = FrameCache::new(2);
+
+        cache.insert(1, "first");
+        cache.insert(1, "updated");
+
+        assert_eq!((cache.len(), cache.get(&1)), (1, Some(&"updated")));
+    }
+
+    #[test]
     fn cancelled_token_is_visible_to_clones() {
         let token = CancellationToken::new();
         let clone = token.clone();
