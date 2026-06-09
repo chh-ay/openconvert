@@ -9,10 +9,10 @@ automates all three.
 - **Dynamic (default):** `cargo build -p openconvert-app --release` links the
   system libav. Smallest binary, fastest build, but the target machine must
   provide FFmpeg + codec libraries. Best for a distro package (e.g. Arch).
-- **Self-contained:** add `--features static-ffmpeg` to statically link FFmpeg
-  and the GPL codec set into the binary. Larger and slower to build (compiles
-  FFmpeg from source; needs `nasm` + a C toolchain), but runs with no system
-  libav. Best for macOS/Windows where users have no libav.
+- **Bundled libav/codecs:** add `--features static-ffmpeg` to build and
+  statically link FFmpeg/libav. External codec libraries are folded into the
+  binary when static `.a` archives are selected. Best for macOS/Windows where
+  users have no libav.
 
 ## Arch Linux
 
@@ -28,7 +28,7 @@ It depends on `ffmpeg`, `alsa-lib`, the X11/Wayland/GL libraries `eframe` needs,
 
 ## macOS
 
-Users have no libav, so build self-contained:
+Users have no libav, so build with bundled libav:
 
 ```sh
 brew install nasm pkg-config x264 x265 libvpx opus lame
@@ -46,22 +46,27 @@ names.
 
 ## Windows
 
-Build self-contained under MSYS2 (provides the `sh`/`make`/`nasm` that FFmpeg's
-configure requires):
+Build under MSYS2 (provides the `sh`/`make`/`nasm` that FFmpeg's configure
+requires):
 
 ```sh
 # in an MSYS2 MINGW64 shell
 pacman -S --needed base-devel make diffutils nasm yasm \
   mingw-w64-x86_64-toolchain mingw-w64-x86_64-rust \
   mingw-w64-x86_64-clang mingw-w64-x86_64-pkgconf \
-  mingw-w64-x86_64-x264 mingw-w64-x86_64-x265 mingw-w64-x86_64-libvpx \
+  mingw-w64-x86_64-ntldd \
+  mingw-w64-x86_64-libx264 mingw-w64-x86_64-x265 mingw-w64-x86_64-libvpx \
   mingw-w64-x86_64-opus mingw-w64-x86_64-lame
+PKG_CONFIG_ALL_STATIC=1 \
+RUSTFLAGS="-C target-feature=+crt-static" \
 cargo build -p openconvert-app --release --locked --features static-ffmpeg
+ntldd -R target/release/openconvert-app.exe
 ```
 
-Windows static FFmpeg is the most involved path and may need toolchain tuning.
-The alternative is prebuilt FFmpeg shared dev libraries (set `FFMPEG_DIR`) plus
-shipping the DLLs beside `openconvert-app.exe`.
+The CI release job publishes the bare `.exe` and validates it with `ntldd -R`.
+Any unresolved dependency or dependency from `/mingw64/bin/*.dll` fails the job
+instead of publishing an executable that will later error with a missing
+`libopus-0.dll`, `libmp3lame-0.dll`, `libvpx-0.dll`, or `libx264-*.dll`.
 
 ## Fully static codecs (Linux, optional)
 
