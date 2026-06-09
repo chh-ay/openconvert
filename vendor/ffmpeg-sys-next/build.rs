@@ -968,10 +968,40 @@ fn link_to_libraries(statik: bool) {
     }
 }
 
+fn should_link_extra_library_statically(force_static_extra_libs: bool, lib: &str) -> bool {
+    force_static_extra_libs
+        && matches!(
+            lib,
+            "charset"
+                | "gcc"
+                | "gcc_eh"
+                | "hdr10plus"
+                | "iconv"
+                | "mp3lame"
+                | "opus"
+                | "ssp"
+                | "stdc++"
+                | "vpx"
+                | "winpthread"
+                | "x264"
+                | "x265"
+                | "z"
+        )
+}
+
+fn print_extra_library_link(force_static_extra_libs: bool, lib: &str) {
+    if should_link_extra_library_statically(force_static_extra_libs, lib) {
+        println!("cargo:rustc-link-lib=static={lib}");
+    } else {
+        println!("cargo:rustc-link-lib={lib}");
+    }
+}
+
 fn main() {
     let statik = env::var("CARGO_FEATURE_STATIC").is_ok();
     let ffmpeg_major_version: u32 = env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap();
-
+    let force_static_extra_libs =
+        statik && env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows");
     let sysroot = find_sysroot();
     let include_paths: Vec<PathBuf> = if env::var("CARGO_FEATURE_BUILD").is_ok() {
         println!(
@@ -1015,7 +1045,7 @@ fn main() {
                 .iter()
                 .filter(|flag| flag.starts_with("-l"))
                 .map(|lib| &lib[2..])
-                .for_each(|lib| println!("cargo:rustc-link-lib={lib}"));
+                .for_each(|lib| print_extra_library_link(force_static_extra_libs, lib));
 
             extra_linker_args
                 .iter()
@@ -1035,7 +1065,6 @@ fn main() {
                     );
                 })
         }
-
         vec![search().join("include")]
     }
     // Use prebuilt library

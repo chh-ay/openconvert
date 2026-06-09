@@ -3,8 +3,7 @@ name: release
 # Per-OS native builds, then a published GitHub Release with the binaries.
 # Cross-compiling a static FFmpeg from one host is impractical, so each target
 # builds on its own runner. Linux/Arch links the system libav (the distro ships
-# it); macOS and Windows produce self-contained binaries via `static-ffmpeg`
-# because those systems have no libav.
+# it); macOS and Windows embed libav because those systems have no libav.
 on:
   workflow_dispatch:
     inputs:
@@ -52,7 +51,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-      - name: Build (static libav, self-contained)
+      - name: Build (static libav)
         run: |
           # lame ships no pkg-config file and macOS clang does not search the
           # Homebrew prefix by default, so point the configure compile/link
@@ -82,15 +81,37 @@ jobs:
             base-devel git make diffutils nasm yasm
             mingw-w64-x86_64-toolchain mingw-w64-x86_64-rust
             mingw-w64-x86_64-clang mingw-w64-x86_64-pkgconf
-            mingw-w64-x86_64-x264 mingw-w64-x86_64-x265 mingw-w64-x86_64-libvpx
+            mingw-w64-x86_64-ntldd
+            mingw-w64-x86_64-libx264 mingw-w64-x86_64-x265 mingw-w64-x86_64-libvpx
             mingw-w64-x86_64-opus mingw-w64-x86_64-lame
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-      - name: Build (static libav, self-contained)
+      - name: Build (static libav and codecs)
         env:
           BINDGEN_EXTRA_CLANG_ARGS_x86_64_pc_windows_gnu: --target=x86_64-pc-windows-gnu
+          PKG_CONFIG_ALL_STATIC: "1"
+          RUSTFLAGS: "-C target-feature=+crt-static"
         run: cargo build -p openconvert-app --release --locked --features static-ffmpeg
+      - name: Verify no MinGW runtime DLLs are required
+        run: |
+          unresolved=0
+          while IFS= read -r line; do
+            case "$line" in
+              *"=> not found"*)
+                printf 'Unresolved runtime dependency: %s\n' "$line"
+                unresolved=1
+                ;;
+              *"=> /mingw64/bin/"*.dll*)
+                printf 'Unexpected dynamic MinGW dependency: %s\n' "$line"
+                unresolved=1
+                ;;
+            esac
+          done < <(ntldd -R target/release/openconvert-app.exe)
+
+          if [ "$unresolved" -ne 0 ]; then
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: openconvert-windows-x86_64

@@ -24,19 +24,19 @@ Development builds dynamically link system libav for fast iteration:
 cargo run -p openconvert-app --release
 ```
 
-For a self-contained release that embeds libav (no system FFmpeg needed):
+For a release build that embeds libav (no system FFmpeg needed):
 
 ```sh
 cargo build -p openconvert-app --release --features static-ffmpeg
 ```
 
 See [`packaging/README.md`](packaging/README.md) for the per-OS build and
-packaging strategy (Arch dynamic distro package, macOS/Windows self-contained)
-and the `.github/workflows/release.yml` CI matrix.
+packaging strategy (Arch dynamic distro package, macOS binary, Windows single
+`.exe`) and the `.github/workflows/release.yml` CI matrix.
 
 ## Static release notes
 
-The static release build embeds FFmpeg/libav, so users do not need FFmpeg installed and no `ffmpeg` executable is shipped. External codec libraries (x264, x265, vpx, opus, mp3lame) are still linked from the system unless static `.a` archives for those codecs are available (`scripts/build-static-codecs.sh`).
+The static release build embeds FFmpeg/libav, so users do not need FFmpeg installed and no `ffmpeg` executable is shipped. External codec libraries (x264, x265, vpx, opus, mp3lame) are folded in only when static `.a` archives are selected; the Windows release job forces that mode and fails if the final `.exe` still depends on `/mingw64/bin/*.dll`.
 
 - **Requires `nasm` and a C toolchain** — it compiles FFmpeg from source, so the first build is slow and the binary grows.
 - The GPL codec set (x264/x265) makes the resulting binary GPL-licensed.
