@@ -51,6 +51,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
+          # Salt: FFmpeg is only reconfigured when its build dir is absent, so
+          # configure-flag changes need a fresh cache to take effect.
+          key: static-link-v2
       - name: Build (static libav)
         run: |
           # lame ships no pkg-config file and macOS clang does not search the
@@ -87,12 +90,19 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
+          # Salt: FFmpeg is only reconfigured when its build dir is absent, so
+          # configure-flag changes need a fresh cache to take effect.
+          key: static-link-v2
       - name: Build (static libav and codecs)
         env:
           BINDGEN_EXTRA_CLANG_ARGS_x86_64_pc_windows_gnu: --target=x86_64-pc-windows-gnu
-          PKG_CONFIG_ALL_STATIC: "1"
-          RUSTFLAGS: "-C target-feature=+crt-static"
-        run: cargo build -p openconvert-app --release --locked --features static-ffmpeg
+        run: |
+          # The build script emits `-l static=<codec>`, which makes rustc itself
+          # locate lib<codec>.a — and the native rustc cannot resolve the POSIX
+          # path /mingw64/lib, so hand it the Windows form. crt-static folds in
+          # libgcc/libwinpthread so no MinGW runtime DLLs remain either.
+          export RUSTFLAGS="-C target-feature=+crt-static -L native=$(cygpath -m /mingw64/lib)"
+          cargo build -p openconvert-app --release --locked --features static-ffmpeg
       - name: Verify no MinGW runtime DLLs are required
         run: |
           unresolved=0

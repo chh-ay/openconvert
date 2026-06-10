@@ -433,6 +433,10 @@ fn build(sysroot: Option<&str>) -> io::Result<()> {
     if target_os == "windows" {
         configure.arg("--disable-pthreads");
         configure.arg("--enable-w32threads");
+        // openconvert: ask pkg-config for Libs.private too, so EXTRALIBS lists
+        // every archive a static codec needs (e.g. x265 -> -lstdc++/-lhdr10plus,
+        // iconv -> -lcharset) and the fully static link below can resolve them.
+        configure.arg("--pkg-config-flags=--static");
     } else if target_env != "msvc" {
         configure.arg("--enable-pthreads");
     }
@@ -485,6 +489,10 @@ fn build(sysroot: Option<&str>) -> io::Result<()> {
     {
         switch(&mut configure, &lib.name.to_uppercase(), lib.name);
     }
+
+    // openconvert: actually forward the zlib feature to configure; with
+    // --disable-autodetect, zlib (and thus the PNG codec) stays off otherwise.
+    enable!(configure, "BUILD_ZLIB", "zlib");
 
     // configure external SSL libraries
     enable!(configure, "BUILD_LIB_GNUTLS", "gnutls");
@@ -973,12 +981,11 @@ fn should_link_extra_library_statically(force_static_extra_libs: bool, lib: &str
         && matches!(
             lib,
             "charset"
-                | "gcc"
-                | "gcc_eh"
                 | "hdr10plus"
                 | "iconv"
                 | "mp3lame"
                 | "opus"
+                | "pthread"
                 | "ssp"
                 | "stdc++"
                 | "vpx"
@@ -1046,6 +1053,14 @@ fn main() {
                 .filter(|flag| flag.starts_with("-l"))
                 .map(|lib| &lib[2..])
                 .for_each(|lib| print_extra_library_link(force_static_extra_libs, lib));
+
+            if force_static_extra_libs {
+                // lame ships no pkg-config file, so its private iconv/charset
+                // dependency never reaches EXTRALIBS. Emit the archives after
+                // -lmp3lame; ld skips them when no symbol is referenced.
+                print_extra_library_link(true, "iconv");
+                print_extra_library_link(true, "charset");
+            }
 
             extra_linker_args
                 .iter()

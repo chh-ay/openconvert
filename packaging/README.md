@@ -57,8 +57,9 @@ pacman -S --needed base-devel make diffutils nasm yasm \
   mingw-w64-x86_64-ntldd \
   mingw-w64-x86_64-libx264 mingw-w64-x86_64-x265 mingw-w64-x86_64-libvpx \
   mingw-w64-x86_64-opus mingw-w64-x86_64-lame
-PKG_CONFIG_ALL_STATIC=1 \
-RUSTFLAGS="-C target-feature=+crt-static" \
+# rustc must resolve the static codec archives itself; give it /mingw64/lib in
+# Windows form. crt-static folds in libgcc/libwinpthread.
+export RUSTFLAGS="-C target-feature=+crt-static -L native=$(cygpath -m /mingw64/lib)"
 cargo build -p openconvert-app --release --locked --features static-ffmpeg
 ntldd -R target/release/openconvert-app.exe
 ```
