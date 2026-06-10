@@ -53,16 +53,31 @@ jobs:
           cache-on-failure: true
           # Salt: FFmpeg is only reconfigured when its build dir is absent, so
           # configure-flag changes need a fresh cache to take effect.
-          key: static-link-v2
-      - name: Build (static libav)
+          key: static-link-v3
+      - name: Build (static libav and codecs)
         run: |
-          # lame ships no pkg-config file and macOS clang does not search the
-          # Homebrew prefix by default, so point the configure compile/link
-          # tests at it (the pkg-config codecs are already found via brew).
+          # Static codec archives live in the Homebrew prefix; rustc must see
+          # that path when the build script emits `-l static=<codec>`.
+          export RUSTFLAGS="-L native=$(brew --prefix)/lib"
           export PKG_CONFIG_PATH="$(brew --prefix)/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
           export CPATH="$(brew --prefix)/include"
           export LIBRARY_PATH="$(brew --prefix)/lib"
           cargo build -p openconvert-app --release --locked --features static-ffmpeg
+      - name: Verify no Homebrew codec dylibs are required
+        run: |
+          unresolved=0
+          while IFS= read -r line; do
+            case "$line" in
+              */opt/homebrew/* | */usr/local/opt/* | */usr/local/Cellar/*)
+                printf 'Unexpected Homebrew runtime dependency: %s\n' "$line"
+                unresolved=1
+                ;;
+            esac
+          done < <(otool -L target/release/openconvert-app)
+
+          if [ "$unresolved" -ne 0 ]; then
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: openconvert-macos
@@ -92,7 +107,7 @@ jobs:
           cache-on-failure: true
           # Salt: FFmpeg is only reconfigured when its build dir is absent, so
           # configure-flag changes need a fresh cache to take effect.
-          key: static-link-v2
+          key: static-link-v3
       - name: Build (static libav and codecs)
         env:
           BINDGEN_EXTRA_CLANG_ARGS_x86_64_pc_windows_gnu: --target=x86_64-pc-windows-gnu
@@ -109,15 +124,21 @@ jobs:
           while IFS= read -r line; do
             case "$line" in
               *"=> not found"*)
-                printf 'Unresolved runtime dependency: %s\n' "$line"
-                unresolved=1
+                case "$line" in
+                  *"api-ms-"*.dll* | *"ext-ms-"*.dll*)
+                    ;;
+                  *)
+                    printf 'Unresolved runtime dependency: %s\n' "$line"
+                    unresolved=1
+                    ;;
+                esac
                 ;;
               *"=> /mingw64/bin/"*.dll*)
                 printf 'Unexpected dynamic MinGW dependency: %s\n' "$line"
                 unresolved=1
                 ;;
             esac
-          done < <(ntldd -R target/release/openconvert-app.exe)
+          done < <(ntldd target/release/openconvert-app.exe)
 
           if [ "$unresolved" -ne 0 ]; then
             exit 1

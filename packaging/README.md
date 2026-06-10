@@ -28,21 +28,24 @@ It depends on `ffmpeg`, `alsa-lib`, the X11/Wayland/GL libraries `eframe` needs,
 
 ## macOS
 
-Users have no libav, so build with bundled libav:
+Users have no libav, so build with bundled libav and static Homebrew codec
+archives:
 
 ```sh
 brew install nasm pkg-config x264 x265 libvpx opus lame
-# lame ships no .pc file; macOS clang does not search the brew prefix by
-# default, so point it there for FFmpeg's configure compile/link tests.
+# rustc must resolve static codec archives itself; FFmpeg configure still needs
+# the Homebrew include/lib prefixes for compile/link probes.
+export RUSTFLAGS="-L native=$(brew --prefix)/lib"
+export PKG_CONFIG_PATH="$(brew --prefix)/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 export CPATH="$(brew --prefix)/include"
 export LIBRARY_PATH="$(brew --prefix)/lib"
 cargo build -p openconvert-app --release --locked --features static-ffmpeg
+otool -L target/release/openconvert-app
 ```
 
-The codec libraries (x264/x265/libvpx/opus/lame) may still link dynamically from
-Homebrew unless static archives are supplied (see "Fully static codecs"). To
-ship a `.app`, bundle any remaining non-system dylibs and fix their install
-names.
+The CI release job rejects any `/opt/homebrew`, `/usr/local/opt`, or
+`/usr/local/Cellar` load command before upload. To ship a `.app`, add app
+metadata around that already self-contained binary.
 
 ## Windows
 
@@ -61,13 +64,13 @@ pacman -S --needed base-devel make diffutils nasm yasm \
 # Windows form. crt-static folds in libgcc/libwinpthread.
 export RUSTFLAGS="-C target-feature=+crt-static -L native=$(cygpath -m /mingw64/lib)"
 cargo build -p openconvert-app --release --locked --features static-ffmpeg
-ntldd -R target/release/openconvert-app.exe
+ntldd target/release/openconvert-app.exe
 ```
 
-The CI release job publishes the bare `.exe` and validates it with `ntldd -R`.
-Any unresolved dependency or dependency from `/mingw64/bin/*.dll` fails the job
-instead of publishing an executable that will later error with a missing
-`libopus-0.dll`, `libmp3lame-0.dll`, `libvpx-0.dll`, or `libx264-*.dll`.
+The CI release job publishes the bare `.exe` and validates direct imports with
+`ntldd`. Any dependency from `/mingw64/bin/*.dll` fails the job instead of
+publishing an executable that will later error with a missing `libopus-0.dll`,
+`libmp3lame-0.dll`, `libvpx-0.dll`, or `libx264-*.dll`.
 
 ## Fully static codecs (Linux, optional)
 
