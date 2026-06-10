@@ -78,10 +78,53 @@ jobs:
           if [ "$unresolved" -ne 0 ]; then
             exit 1
           fi
+      - name: Package macOS app bundle and DMG
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json, sys; data = json.load(sys.stdin); print(next(package["version"] for package in data["packages"] if package["name"] == "openconvert-app"))')
+          app_dir="dist/dmg/OpenConvert.app"
+          contents_dir="$app_dir/Contents"
+          macos_dir="$contents_dir/MacOS"
+          mkdir -p "$macos_dir"
+          cp target/release/openconvert-app "$macos_dir/OpenConvert"
+          chmod +x "$macos_dir/OpenConvert"
+          cat > "$contents_dir/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleDevelopmentRegion</key>
+            <string>en</string>
+            <key>CFBundleDisplayName</key>
+            <string>OpenConvert</string>
+            <key>CFBundleExecutable</key>
+            <string>OpenConvert</string>
+            <key>CFBundleIdentifier</key>
+            <string>dev.openconvert.OpenConvert</string>
+            <key>CFBundleInfoDictionaryVersion</key>
+            <string>6.0</string>
+            <key>CFBundleName</key>
+            <string>OpenConvert</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleShortVersionString</key>
+            <string>$version</string>
+            <key>CFBundleVersion</key>
+            <string>$version</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>11.0</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+          </dict>
+          </plist>
+          PLIST
+          plutil -lint "$contents_dir/Info.plist"
+          codesign --force --deep --sign - "$app_dir"
+          ln -s /Applications dist/dmg/Applications
+          hdiutil create -volname OpenConvert -srcfolder dist/dmg -ov -format UDZO openconvert-macos.dmg
       - uses: actions/upload-artifact@v4
         with:
           name: openconvert-macos
-          path: target/release/openconvert-app
+          path: openconvert-macos.dmg
 
   windows:
     runs-on: windows-latest
@@ -163,7 +206,7 @@ jobs:
         run: |
           mkdir -p release
           cp artifacts/openconvert-linux-x86_64/openconvert-app release/openconvert-linux-x86_64 || true
-          cp artifacts/openconvert-macos/openconvert-app release/openconvert-macos || true
+          cp artifacts/openconvert-macos/openconvert-macos.dmg release/openconvert-macos.dmg || true
           cp artifacts/openconvert-windows-x86_64/openconvert-app.exe release/openconvert-windows-x86_64.exe || true
           ls -l release
       - uses: softprops/action-gh-release@v2

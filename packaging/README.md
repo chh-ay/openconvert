@@ -43,9 +43,11 @@ cargo build -p openconvert-app --release --locked --features static-ffmpeg
 otool -L target/release/openconvert-app
 ```
 
-The CI release job rejects any `/opt/homebrew`, `/usr/local/opt`, or
-`/usr/local/Cellar` load command before upload. To ship a `.app`, add app
-metadata around that already self-contained binary.
+The CI release job wraps that binary in an unsigned `OpenConvert.app`, ad-hoc
+signs it, creates `openconvert-macos.dmg` with `hdiutil`, and rejects any
+`/opt/homebrew`, `/usr/local/opt`, or `/usr/local/Cellar` load command before
+upload. Notarization is intentionally not wired yet because it requires Apple
+Developer credentials.
 
 ## Windows
 

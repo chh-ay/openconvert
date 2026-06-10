@@ -31,12 +31,12 @@ cargo build -p openconvert-app --release --features static-ffmpeg
 ```
 
 See [`packaging/README.md`](packaging/README.md) for the per-OS build and
-packaging strategy (Arch dynamic distro package, macOS binary, Windows single
+packaging strategy (Arch dynamic distro package, macOS DMG, Windows single
 `.exe`) and the `.github/workflows/release.yml` CI matrix.
 
 ## Static release notes
 
-The static release build embeds FFmpeg/libav, so users do not need FFmpeg installed and no `ffmpeg` executable is shipped. External codec libraries (x264, x265, vpx, opus, mp3lame) are folded in only when static `.a` archives are selected; the Windows release job forces that mode and fails if the final `.exe` still depends on `/mingw64/bin/*.dll`.
+The static release build embeds FFmpeg/libav, so users do not need FFmpeg installed and no `ffmpeg` executable is shipped. External codec libraries (x264, x265, vpx, opus, mp3lame) are folded in only when static `.a` archives are selected; the macOS and Windows release jobs force that mode and fail if runtime codec DLLs/dylibs remain.
 
 - **Requires `nasm` and a C toolchain** — it compiles FFmpeg from source, so the first build is slow and the binary grows.
 - The GPL codec set (x264/x265) makes the resulting binary GPL-licensed.
